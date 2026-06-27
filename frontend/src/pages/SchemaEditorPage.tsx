@@ -1,0 +1,256 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { schemasApi } from '@/api/client';
+
+export function SchemaEditorPage() {
+  const qc = useQueryClient();
+  const [selectedSchemaId, setSelectedSchemaId] = useState<string | null>(null);
+
+  const schemasQuery = useQuery({ queryKey: ['schemas'], queryFn: schemasApi.list });
+
+  const selectedSchema = schemasQuery.data?.find((s: any) => s.id === selectedSchemaId);
+
+  return (
+    <div className="flex h-full">
+      {/* Schema list */}
+      <div className="w-64 border-r border-gray-200 bg-white flex flex-col">
+        <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900">Schemas</h2>
+          <CreateSchemaButton onCreated={(id) => setSelectedSchemaId(id)} />
+        </div>
+        <div className="flex-1 overflow-auto">
+          {schemasQuery.isLoading && <p className="px-4 py-2 text-sm text-gray-500">Loading...</p>}
+          {schemasQuery.data?.map((s: any) => (
+            <button
+              key={s.id}
+              onClick={() => setSelectedSchemaId(s.id)}
+              className={`w-full text-left px-4 py-3 text-sm border-b border-gray-100 hover:bg-gray-50 ${
+                selectedSchemaId === s.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+              }`}
+            >
+              <div className="font-medium">{s.name}</div>
+              {s.description && <div className="text-xs text-gray-400 mt-0.5 truncate">{s.description}</div>}
+            </button>
+          ))}
+          {schemasQuery.data?.length === 0 && (
+            <p className="px-4 py-3 text-sm text-gray-400">No schemas yet. Create one to get started.</p>
+          )}
+        </div>
+      </div>
+
+      {/* Schema detail */}
+      <div className="flex-1 overflow-auto">
+        {selectedSchema ? (
+          <SchemaDetail schemaId={selectedSchemaId!} />
+        ) : (
+          <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+            Select a schema to view or edit
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CreateSchemaButton({ onCreated }: { onCreated: (id: string) => void }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [desc, setDesc] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: () => schemasApi.create({ name, description: desc }),
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['schemas'] });
+      setOpen(false);
+      setName('');
+      setDesc('');
+      onCreated(data.id);
+    },
+  });
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">
+        + New
+      </button>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); mutation.mutate(); }}
+      className="space-y-1"
+    >
+      <input
+        value={name}
+        onChange={e => setName(e.target.value)}
+        placeholder="Schema name"
+        className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+        autoFocus
+      />
+      <input
+        value={desc}
+        onChange={e => setDesc(e.target.value)}
+        placeholder="Description (optional)"
+        className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+      />
+      <div className="flex gap-1">
+        <button type="submit" disabled={mutation.isPending} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">
+          {mutation.isPending ? '...' : 'Create'}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-500 px-2 py-1">Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function SchemaDetail({ schemaId }: { schemaId: string }) {
+  const qc = useQueryClient();
+  const schemaQuery = useQuery({ queryKey: ['schemas', schemaId], queryFn: () => schemasApi.get(schemaId) });
+  const fieldsQuery = useQuery({ queryKey: ['schemas', schemaId, 'fields'], queryFn: () => schemasApi.listFields(schemaId) });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => schemasApi.delete(schemaId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['schemas'] }),
+  });
+
+  const [showAddField, setShowAddField] = useState(false);
+  const [fieldKey, setFieldKey] = useState('');
+  const [fieldDisplayName, setFieldDisplayName] = useState('');
+  const [fieldDataType, setFieldDataType] = useState('number');
+
+  const addFieldMutation = useMutation({
+    mutationFn: () => schemasApi.createField(schemaId, {
+      key: fieldKey, displayName: fieldDisplayName, dataType: fieldDataType,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['schemas', schemaId, 'fields'] });
+      setShowAddField(false);
+      setFieldKey('');
+      setFieldDisplayName('');
+    },
+  });
+
+  const deleteFieldMutation = useMutation({
+    mutationFn: (fieldId: string) => schemasApi.deleteField(schemaId, fieldId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['schemas', schemaId, 'fields'] }),
+  });
+
+  if (schemaQuery.isLoading) return <div className="p-4">Loading...</div>;
+  const schema: any = schemaQuery.data;
+
+  return (
+    <div className="p-6">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">{schema.name}</h1>
+          {schema.description && <p className="text-sm text-gray-500 mt-1">{schema.description}</p>}
+          <p className="text-xs text-gray-400 mt-2">ID: {schema.id}</p>
+        </div>
+        <button
+          onClick={() => { if (confirm('Delete this schema?')) deleteMutation.mutate(); }}
+          className="text-sm text-red-600 hover:text-red-700 border border-red-200 rounded px-3 py-1"
+        >
+          Delete Schema
+        </button>
+      </div>
+
+      {/* Fields */}
+      <div className="bg-white border border-gray-200 rounded-lg">
+        <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900">Fields</h2>
+          <button
+            onClick={() => setShowAddField(true)}
+            className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
+          >
+            + Add Field
+          </button>
+        </div>
+
+        {showAddField && (
+          <form
+            onSubmit={(e) => { e.preventDefault(); addFieldMutation.mutate(); }}
+            className="px-4 py-3 bg-gray-50 border-b border-gray-200 space-y-2"
+          >
+            <div className="grid grid-cols-3 gap-2">
+              <input
+                value={fieldKey}
+                onChange={e => setFieldKey(e.target.value.toLowerCase().replace(/\s+/g, '_'))}
+                placeholder="key (e.g. followers)"
+                className="text-sm border border-gray-300 rounded px-2 py-1"
+                required
+              />
+              <input
+                value={fieldDisplayName}
+                onChange={e => setFieldDisplayName(e.target.value)}
+                placeholder="Display name"
+                className="text-sm border border-gray-300 rounded px-2 py-1"
+                required
+              />
+              <select
+                value={fieldDataType}
+                onChange={e => setFieldDataType(e.target.value)}
+                className="text-sm border border-gray-300 rounded px-2 py-1"
+              >
+                {['number', 'string', 'boolean', 'percentage', 'datetime', 'array', 'object'].map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-1">
+              <button type="submit" disabled={addFieldMutation.isPending}
+                className="text-xs bg-blue-600 text-white px-3 py-1 rounded">
+                {addFieldMutation.isPending ? '...' : 'Add'}
+              </button>
+              <button type="button" onClick={() => setShowAddField(false)}
+                className="text-xs text-gray-500 px-2 py-1">Cancel</button>
+            </div>
+          </form>
+        )}
+
+        {fieldsQuery.isLoading && <div className="p-4 text-sm text-gray-500">Loading fields...</div>}
+
+        <table className="w-full">
+          <thead>
+            <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+              <th className="px-4 py-2 font-medium">Key</th>
+              <th className="px-4 py-2 font-medium">Display Name</th>
+              <th className="px-4 py-2 font-medium">Type</th>
+              <th className="px-4 py-2 w-8"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {(fieldsQuery.data as any[])?.map((f: any) => (
+              <tr key={f.id} className="border-b border-gray-50 hover:bg-gray-50">
+                <td className="px-4 py-2 text-sm font-mono text-gray-700">{f.key}</td>
+                <td className="px-4 py-2 text-sm text-gray-900">{f.displayName}</td>
+                <td className="px-4 py-2 text-sm">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+                    {f.dataType}
+                  </span>
+                </td>
+                <td className="px-4 py-2">
+                  <button
+                    onClick={() => { if (confirm('Delete field?')) deleteFieldMutation.mutate(f.id); }}
+                    className="text-xs text-red-400 hover:text-red-600"
+                  >
+                    ✕
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!fieldsQuery.data?.length && (
+              <tr>
+                <td colSpan={4} className="px-4 py-6 text-sm text-gray-400 text-center">
+                  No fields yet. Add some to define the input data structure.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
