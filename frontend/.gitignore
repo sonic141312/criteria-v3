@@ -1,0 +1,61 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+
+# test coverage
+coverage/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# editor
+.vscode/
+.idea/
+
+# os
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# pnpm
+.pnpm-store/
+
+# TypeScript
+*.tsbuildinfo
+*.tsbuildinfo/
+
+# Cache
+.cache/
+.turbo/
+.parcel-cache/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.tmp/
+
+# Runtime files
+*.pid
+*.seed
+*.pid.lock
+
+# Debug
+.node_repl_history
+
+# Compiled
+*.tgz
+
+# Local env files (already covered but be explicit)
+*.local
