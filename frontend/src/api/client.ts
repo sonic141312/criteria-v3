@@ -2,10 +2,10 @@ const API_BASE = '/api';
 
 /**
  * Reads the orgId from the current session.
- * In MVP, this is a simple prompt. In production, this comes from auth.
+ * In MVP, this uses a default dev org UUID. In production, this comes from auth.
  */
 function getOrgId(): string {
-  return (window as Window & { __orgId?: string }).__orgId ?? '';
+  return (window as Window & { __orgId?: string }).__orgId ?? '00000000-0000-0000-0000-000000000001';
 }
 
 function headers() {

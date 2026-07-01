@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SchemaEditorPage } from './pages/SchemaEditorPage';
 import { GraphBuilderPage } from './pages/GraphBuilderPage';
 import { ExecutionRunnerPage } from './pages/ExecutionRunnerPage';
+import { EvaluationPage } from './pages/EvaluationPage';
 import { AppLayout } from './components/AppLayout';
 
 const queryClient = new QueryClient({
@@ -20,7 +21,9 @@ export function App() {
             <Route path="/" element={<Navigate to="/schemas" replace />} />
             <Route path="/schemas" element={<SchemaEditorPage />} />
             <Route path="/schemas/:schemaId" element={<SchemaEditorPage />} />
+            <Route path="/evaluations" element={<EvaluationPage />} />
             <Route path="/evaluations/:evaluationId/versions/:versionId/graph" element={<GraphBuilderPage />} />
+            <Route path="/executions" element={<ExecutionRunnerPage />} />
             <Route path="/executions/:executionId" element={<ExecutionRunnerPage />} />
           </Route>
         </Routes>
