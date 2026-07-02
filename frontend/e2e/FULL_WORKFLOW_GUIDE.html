@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hướng Dẫn Sử Dụng Criteria System v3</title>
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --purple: #8b5cf6;
+            --pink: #ec4899;
+            --bg-light: #f8fafc;
+            --bg-dark: #1e293b;
+            --text-light: #1e293b;
+            --text-dark: #f1f5f9;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            color: var(--text-light);
+            background: var(--bg-light);
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            color: var(--primary);
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            color: var(--primary-dark);
+            margin: 2rem 0 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--primary);
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            color: #475569;
+            margin: 1.5rem 0 0.75rem;
+        }
+
+        h4 {
+            font-size: 1.1rem;
+            color: #64748b;
+            margin: 1rem 0 0.5rem;
+        }
+
+        .intro {
+            background: linear-gradient(135deg, var(--primary), var(--purple));
+            color: white;
+            padding: 2rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .intro h1 {
+            color: white;
+            margin-bottom: 0.5rem;
+        }
+
+        .intro p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        .workflow {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .step {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .step::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 6px;
+            height: 100%;
+            background: var(--primary);
+        }
+
+        .step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            font-weight: bold;
+            margin-right: 1rem;
+        }
+
+        .step-title {
+            display: inline;
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--text-light);
+        }
+
+        .step-content {
+            margin-top: 1rem;
+            padding-left: 3rem;
+        }
+
+        .plugin-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin: 0.25rem;
+        }
+
+        .plugin-input { background: #dbeafe; color: #1e40af; }
+        .plugin-output { background: #fce7f3; color: #9d174d; }
+        .plugin-normalize { background: #d1fae5; color: #065f46; }
+        .plugin-weighted { background: #fef3c7; color: #92400e; }
+        .plugin-formula { background: #e0e7ff; color: #3730a3; }
+        .plugin-threshold { background: #fee2e2; color: #991b1b; }
+
+        .action-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .action-list li {
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+
+        .action-list li::before {
+            content: '→';
+            position: absolute;
+            left: 0;
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        .action-list li.sub {
+            padding-left: 2.5rem;
+            font-size: 0.95rem;
+            color: #64748b;
+        }
+
+        .action-list li.sub::before {
+            content: '↳';
+        }
+
+        .screenshot-placeholder {
+            background: linear-gradient(135deg, #e2e8f0, #cbd5e1);
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            color: #64748b;
+            font-style: italic;
+            margin: 1rem 0;
+        }
+
+        .tip {
+            background: #fef9c3;
+            border-left: 4px solid var(--warning);
+            padding: 1rem;
+            border-radius: 0 8px 8px 0;
+            margin: 1rem 0;
+        }
+
+        .tip strong {
+            color: var(--warning);
+        }
+
+        .example {
+            background: #f1f5f9;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+        }
+
+        .example-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--primary-dark);
+        }
+
+        .nav-menu {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav-menu h3 {
+            margin-top: 0;
+        }
+
+        .nav-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .nav-link {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            background: var(--bg-light);
+            border-radius: 8px;
+            text-decoration: none;
+            color: var(--text-light);
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .nav-link:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .card h4 {
+            margin-top: 0;
+            color: var(--primary);
+        }
+
+        .field-type {
+            display: inline-block;
+            padding: 0.125rem 0.5rem;
+            background: #e2e8f0;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-family: monospace;
+        }
+
+        .version-badge {
+            display: inline-flex;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .version-draft { background: #fef3c7; color: #92400e; }
+        .version-published { background: #d1fae5; color: #065f46; }
+        .version-archived { background: #e2e8f0; color: #475569; }
+
+        .graph-preview {
+            background: #1e293b;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            color: #e2e8f0;
+            font-family: monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+        }
+
+        .flow-diagram {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem;
+            background: #f8fafc;
+            border-radius: 8px;
+            margin: 1rem 0;
+            font-family: monospace;
+        }
+
+        .flow-node {
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+
+        .flow-arrow {
+            color: #94a3b8;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 1px solid #e2e8f0;
+            color: #64748b;
+        }
+
+        @media (max-width: 768px) {
+            body { padding: 1rem; }
+            h1 { font-size: 1.8rem; }
+            h2 { font-size: 1.4rem; }
+            .step-content { padding-left: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="intro">
+            <h1>Criteria System v3</h1>
+            <p>Hướng dẫn sử dụng hệ thống đánh giá với Graph Builder</p>
+        </div>
+
+        <!-- Navigation Menu -->
+        <nav class="nav-menu">
+            <h3>📍 Điều hướng nhanh</h3>
+            <div class="nav-links">
+                <a href="#step1" class="nav-link">1. Schema</a>
+                <a href="#step2" class="nav-link">2. Evaluation</a>
+                <a href="#step3" class="nav-link">3. Graph Builder</a>
+                <a href="#step4" class="nav-link">4. Plugins</a>
+                <a href="#step5" class="nav-link">5. Validate</a>
+                <a href="#step6" class="nav-link">6. Publish</a>
+                <a href="#step7" class="nav-link">7. Execute</a>
+                <a href="#step8" class="nav-link">8. Trace</a>
+            </div>
+        </nav>
+
+        <!-- Step 1: Create Schema -->
+        <section id="step1" class="step">
+            <h2><span class="step-number">1</span><span class="step-title">Tạo Schema (Cấu trúc dữ liệu)</span></h2>
+            <div class="step-content">
+                <p>Schema định nghĩa cấu trúc dữ liệu đầu vào cho evaluation. Ví dụ: đánh giá TikTok Creator.</p>
+
+                <h3>Điều hướng</h3>
+                <ul class="action-list">
+                    <li>Vào trang <strong>Schemas</strong> từ sidebar</li>
+                    <li>Click nút <strong>+ New</strong></li>
+                </ul>
+
+                <h3>Thông tin Schema</h3>
+                <ul class="action-list">
+                    <li>Tên: <code>TikTok Creator Evaluation</code></li>
+                    <li>Mô tả: <code>Đánh giá và xếp hạng TikTok Creator</code></li>
+                    <li>Submit form</li>
+                </ul>
+
+                <h3>Thêm Fields (Trường dữ liệu)</h3>
+                <div class="grid">
+                    <div class="card">
+                        <h4>Followers</h4>
+                        <p>Key: <code>followers</code><br>Display: <code>Follower Count</code><br>Type: <span class="field-type">number</span></p>
+                    </div>
+                    <div class="card">
+                        <h4>Likes</h4>
+                        <p>Key: <code>likes</code><br>Display: <code>Total Likes</code><br>Type: <span class="field-type">number</span></p>
+                    </div>
+                    <div class="card">
+                        <h4>Shares</h4>
+                        <p>Key: <code>shares</code><br>Display: <code>Total Shares</code><br>Type: <span class="field-type">number</span></p>
+                    </div>
+                    <div class="card">
+                        <h4>Views</h4>
+                        <p>Key: <code>views</code><br>Display: <code>Total Views</code><br>Type: <span class="field-type">number</span></p>
+                    </div>
+                    <div class="card">
+                        <h4>Comments</h4>
+                        <p>Key: <code>comments</code><br>Display: <code>Total Comments</code><br>Type: <span class="field-type">number</span></p>
+                    </div>
+                    <div class="card">
+                        <h4>Engagement Rate</h4>
+                        <p>Key: <code>engagement_rate</code><br>Display: <code>Engagement Rate</code><br>Type: <span class="field-type">number</span></p>
+                    </div>
+                </div>
+
+                <div class="tip">
+                    <strong>💡 Mẹo:</strong> Mỗi field có key unique trong schema. Key sẽ được dùng trong các plugin input để đọc dữ liệu.
+                </div>
+            </div>
+        </section>
+
+        <!-- Step 2: Create Evaluation -->
+        <section id="step2" class="step">
+            <h2><span class="step-number">2</span><span class="step-title">Tạo Evaluation</span></h2>
+            <div class="step-content">
+                <p>Evaluation là phiên bản đánh giá gắn với một Schema. Tự động tạo Version 1 (DRAFT).</p>
+
+                <h3>Điều hướng</h3>
+                <ul class="action-list">
+                    <li>Vào trang <strong>Evaluations</strong> từ sidebar</li>
+                    <li>Click nút <strong>New Evaluation</strong></li>
+                </ul>
+
+                <h3>Thông tin Evaluation</h3>
+                <ul class="action-list">
+                    <li>Chọn Schema: <code>TikTok Creator Evaluation</code></li>
+                    <li>Tên: <code>Creator Ranking Evaluation</code></li>
+                    <li>Mô tả: <code>Xếp hạng Creator theo metrics</code></li>
+                    <li>Submit form → Tự động chuyển sang <strong>Graph Builder</strong></li>
+                </ul>
+
+                <div class="tip">
+                    <strong>💡 Mẹo:</strong> Evaluation được tạo sẽ tự động tạo Version 1 ở trạng thái DRAFT. Chỉ version DRAFT mới có thể chỉnh sửa graph.
+                </div>
+            </div>
+        </section>
+
+        <!-- Step 3: Graph Builder -->
+        <section id="step3" class="step">
+            <h2><span class="step-number">3</span><span class="step-title">Xây dựng Graph (Node & Edges)</span></h2>
+            <div class="step-content">
+                <p>Graph Builder cho phép thiết kế luồng xử lý đánh giá bằng cách kết nối các plugins.</p>
+
+                <h3>Các loại Plugin</h3>
+                <div style="margin: 1rem 0;">
+                    <span class="plugin-badge plugin-input">📥 Input</span>
+                    <span class="plugin-badge plugin-normalize">📊 Normalize</span>
+                    <span class="plugin-badge plugin-weighted">⚖️ Weighted Average</span>
+                    <span class="plugin-badge plugin-formula">🔣 Formula</span>
+                    <span class="plugin-badge plugin-threshold">⚡ Threshold</span>
+                    <span class="plugin-badge plugin-output">📤 Output</span>
+                </div>
+
+                <h3>Luồng xử lý mẫu (TikTok Creator)</h3>
+                <div class="flow-diagram">
+                    <span class="flow-node plugin-input">Input: followers</span>
+                    <span class="flow-arrow">→</span>
+                    <span class="flow-node plugin-normalize">Normalize 0-100</span>
+                    <span class="flow-arrow">→</span>
+                    <span class="flow-node plugin-weighted">Weighted Average</span>
+                    <span class="flow-arrow">→</span>
+                    <span class="flow-node plugin-threshold">Threshold 70</span>
+                    <span class="flow-arrow">→</span>
+                    <span class="flow-node plugin-output">Output</span>
+                </div>
+
+                <h3>Hướng dẫn thao tác</h3>
+                <ul class="action-list">
+                    <li><strong>Thêm Node:</strong> Click nút <strong>Add Node</strong> hoặc kéo từ palette bên trái</li>
+                    <li class="sub">Chọn loại plugin (Input, Normalize, Formula, etc.)</li>
+                    <li class="sub">Nhập Label và Config tương ứng</li>
+                    <li class="sub">Click Create</li>
+                    <li><strong>Kết nối Node:</strong> Kéo từ output port (bên phải) đến input port (bên trái)</li>
+                    <li><strong>Di chuyển Node:</strong> Drag node trên canvas</li>
+                    <li><strong>Zoom/Pan:</strong> Dùng chuột hoặc touchpad</li>
+                    <li><strong>Xóa Node/Edge:</strong> Click vào node/edge, chọn delete</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Step 4: Plugin Details -->
+        <section id="step4" class="step">
+            <h2><span class="step-number">4</span><span class="step-title>Chi tiết từng Plugin</span></h2>
+            <div class="step-content">
+                <h3>1. Input Plugin <span class="plugin-badge plugin-input">📥</span></h3>
+                <p>Đọc giá trị từ dữ liệu đầu vào (inputValues khi execute).</p>
+                <ul class="action-list">
+                    <li>Label: Tên hiển thị (VD: "Followers Input")</li>
+                    <li>Config → fieldKey: Key của field trong schema (VD: "followers")</li>
+                </ul>
+                <div class="example">
+                    <div class="example-title">Output Port</div>
+                    value (number)
+                </div>
+
+                <h3>2. Normalize Plugin <span class="plugin-badge plugin-normalize">📊</span></h3>
+                <p>Chuyển đổi giá trị từ range này sang range khác.</p>
+                <ul class="action-list">
+                    <li>Label: "Normalize Followers"</li>
+                    <li>Config:
+                        <ul class="action-list">
+                            <li class="sub">min: 0 (giá trị nhỏ nhất đầu vào)</li>
+                            <li class="sub">max: 1000000 (giá trị lớn nhất đầu vào)</li>
+                            <li class="sub">outMin: 0 (giá trị nhỏ nhất đầu ra)</li>
+                            <li class="sub">outMax: 100 (giá trị lớn nhất đầu ra)</li>
+                        </ul>
+                    </li>
+                </ul>
+                <div class="example">
+                    <div class="example-title">Ví dụ: followers = 500000 → normalized = 50</div>
+                </div>
+
+                <h3>3. Weighted Average Plugin <span class="plugin-badge plugin-weighted">⚖️</span></h3>
+                <p>Tính trung bình có trọng số từ 2-5 đầu vào.</p>
+                <ul class="action-list">
+                    <li>Label: "Main Score Calculator"</li>
+                    <li>Config → weights: Mảng trọng số (tổng = 1.0)
+                        <ul class="action-list">
+                            <li class="sub">[0.3, 0.25, 0.2, 0.15, 0.1] cho 5 inputs</li>
+                        </ul>
+                    </li>
+                </ul>
+                <div class="example">
+                    <div class="example-title">Input Ports</div>
+                    a (required), b (required), c (optional), d (optional), e (optional)
+                </div>
+
+                <h3>4. Formula Plugin <span class="plugin-badge plugin-formula">🔣</span></h3>
+                <p>Tính toán biểu thức phức tạp với AST.</p>
+                <ul class="action-list">
+                    <li>Label: "Engagement Score"</li>
+                    <li>Config → ast: Cấu trúc AST biểu thức</li>
+                </ul>
+                <div class="example">
+                    <div class="example-title">AST cho: base_score * 0.8 + bonus</div>
+<pre>{
+  "type": "BinaryOp",
+  "op": "+",
+  "left": {
+    "type": "BinaryOp",
+    "op": "*",
+    "left": { "type": "Variable", "name": "base_score" },
+    "right": { "type": "Literal", "value": 0.8 }
+  },
+  "right": { "type": "Variable", "name": "bonus" }
+}</pre>
+                </div>
+                <p><strong>Operators:</strong> +, -, *, /, %, >, <, >=, <=, ==, !=, &&, ||</p>
+
+                <h3>5. Threshold Plugin <span class="plugin-badge plugin-threshold">⚡</span></h3>
+                <p>Phân loại dựa trên so sánh với ngưỡng.</p>
+                <ul class="action-list">
+                    <li>Label: "Tier Classifier"</li>
+                    <li>Config:
+                        <ul class="action-list">
+                            <li class="sub">threshold: 70</li>
+                            <li class="sub">comparison: "gte" (greater than or equal)</li>
+                            <li class="sub">aboveOrEqualValue: "Premium Creator"</li>
+                            <li class="sub">belowValue: "Standard Creator"</li>
+                        </ul>
+                    </li>
+                </ul>
+                <p><strong>Comparisons:</strong> gte, gt, lt, lte, eq</p>
+
+                <h3>6. Output Plugin <span class="plugin-badge plugin-output">📤</span></h3>
+                <p>Node cuối cùng, định nghĩa kết quả trả về.</p>
+                <ul class="action-list">
+                    <li>Label: "Final Result"</li>
+                    <li>Config → fields: Mảng tên các trường kết quả
+                        <ul class="action-list">
+                            <li class="sub">["finalScore", "tier"]</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Step 5: Validate -->
+        <section id="step5" class="step">
+            <h2><span class="step-number">5</span><span class="step-title">Validate Graph</span></h2>
+            <div class="step-content">
+                <p>Trước khi publish, hệ thống kiểm tra graph để đảm bảo không có lỗi.</p>
+
+                <h3>Các lỗi có thể phát hiện</h3>
+                <div class="grid">
+                    <div class="card">
+                        <h4>🚫 Cycle Detected</h4>
+                        <p>Graph có chu trình (A→B→C→A). DAG required.</p>
+                    </div>
+                    <div class="card">
+                        <h4>🔗 Orphan Node</h4>
+                        <p>Node không có kết nối vào/ra.</p>
+                    </div>
+                    <div class="card">
+                        <h4>❌ Missing Input</h4>
+                        <p>Required port chưa được kết nối.</p>
+                    </div>
+                    <div class="card">
+                        <h4>⚠️ Type Mismatch</h4>
+                        <p>Port không tương thích về kiểu dữ liệu.</p>
+                    </div>
+                    <div class="card">
+                        <h4>📭 No Output</h4>
+                        <p>Graph thiếu Output node.</p>
+                    </div>
+                    <div class="card">
+                        <h4>🚧 Unreachable Output</h4>
+                        <p>Output không thể truy cập từ input.</p>
+                    </div>
+                </div>
+
+                <h3>Thao tác</h3>
+                <ul class="action-list">
+                    <li>Click nút <strong>Validate</strong></li>
+                    <li>Xem kết quả: "Valid" (xanh) hoặc danh sách lỗi</li>
+                    <li>Sửa lỗi nếu có và validate lại</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Step 6: Publish -->
+        <section id="step6" class="step">
+            <h2><span class="step-number">6</span><span class="step-title">Publish Version</span></h2>
+            <div class="step-content">
+                <p>Publish để kích hoạt version. Khi publish, version cũ đã PUBLISHED sẽ trở thành ARCHIVED.</p>
+
+                <h3>Trạng thái Version</h3>
+                <ul class="action-list">
+                    <li><span class="version-badge version-draft">DRAFT</span> - Có thể chỉnh sửa</li>
+                    <li><span class="version-badge version-published">PUBLISHED</span> - Đang hoạt động, có thể execute</li>
+                    <li><span class="version-badge version-archived">ARCHIVED</span> - Không hoạt động</li>
+                </ul>
+
+                <h3>Thao tác</h3>
+                <ul class="action-list">
+                    <li>Đảm bảo graph đã validate thành công</li>
+                    <li>Click nút <strong>Publish</strong></li>
+                    <li>Xác nhận publish</li>
+                    <li>Status sẽ chuyển từ <span class="version-badge version-draft">DRAFT</span> sang <span class="version-badge version-published">PUBLISHED</span></li>
+                </ul>
+
+                <div class="tip">
+                    <strong>💡 Mẹo:</strong> Để tạo version mới, vào Version Manager. Version mới sẽ clone từ version PUBLISHED gần nhất.
+                </div>
+            </div>
+        </section>
+
+        <!-- Step 7: Execute -->
+        <section id="step7" class="step">
+            <h2><span class="step-number">7</span><span class="step-title">Run Execution</span></h2>
+            <div class="step-content">
+                <p>Thực thi evaluation với dữ liệu đầu vào cụ thể.</p>
+
+                <h3>Điều hướng</h3>
+                <ul class="action-list">
+                    <li>Vào trang <strong>Executions</strong> từ sidebar</li>
+                </ul>
+
+                <h3>Chạy Execution</h3>
+                <ul class="action-list">
+                    <li>Chọn Evaluation</li>
+                    <li>Chọn Version (thường là version đã PUBLISHED)</li>
+                    <li>Nhập input values (định dạng JSON)</li>
+                </ul>
+
+                <div class="example">
+                    <div class="example-title">Input Values cho TikTok Creator</div>
+<pre>{
+  "followers": 500000,
+  "likes": 250000,
+  "shares": 15000,
+  "views": 1500000,
+  "comments": 8000,
+  "engagement_rate": 8.5
+}</pre>
+                </div>
+
+                <h3>Result</h3>
+                <ul class="action-list">
+                    <li>Kết quả trả về từ Output node</li>
+                    <li>Status: SUCCESS, PARTIAL, FAILED</li>
+                </ul>
+
+                <div class="example">
+                    <div class="example-title">Expected Result</div>
+<pre>{
+  "finalScore": 78.5,
+  "tier": "Standard Creator"
+}</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Step 8: Trace -->
+        <section id="step8" class="step">
+            <h2><span class="step-number">8</span><span class="step-title">Xem Execution Trace</span></h2>
+            <div class="step-content">
+                <p>Trace hiển thị chi tiết từng bước xử lý của graph.</p>
+
+                <h3>Điều hướng</h3>
+                <ul class="action-list">
+                    <li>Từ trang Executions, click vào execution bất kỳ</li>
+                    <li>Hoặc truy cập /executions/{id}/trace</li>
+                </ul>
+
+                <h3>Thông tin hiển thị</h3>
+                <ul class="action-list">
+                    <li>Danh sách tất cả nodes đã thực thi</li>
+                    <li>Với mỗi node:
+                        <ul class="action-list">
+                            <li class="sub">Giá trị đầu vào (inputsReceived)</li>
+                            <li class="sub">Giá trị đầu ra (value)</li>
+                            <li class="sub">Thời gian xử lý (durationMs)</li>
+                            <li class="sub">Trạng thái (SUCCESS, SKIPPED, FAILED)</li>
+                        </ul>
+                    </li>
+                    <li>Thứ tự thực thi (topological sort)</li>
+                    <li>Giải thích chi tiết cho từng node (explanation)</li>
+                </ul>
+
+                <div class="tip">
+                    <strong>💡 Mẹo:</strong> Dùng Trace để debug khi kết quả không như mong đợi. Kiểm tra inputsReceived của từng node để xem dữ liệu có đúng không.
+                </div>
+            </div>
+        </section>
+
+        <!-- Version Management -->
+        <section class="step">
+            <h2><span class="step-number">📋</span><span class="step-title">Quản lý Version (Version Manager)</span></h2>
+            <div class="step-content">
+                <p>Vào Version Manager từ Evaluation detail page để quản lý các version.</p>
+
+                <h3>Tính năng</h3>
+                <ul class="action-list">
+                    <li>Xem danh sách tất cả versions</li>
+                    <li>Xem trạng thái (DRAFT/PUBLISHED/ARCHIVED)</li>
+                    <li>Tạo version mới (clone từ PUBLISHED gần nhất)</li>
+                    <li>Publish version DRAFT</li>
+                    <li>Xem metadata: ngày tạo, ngày publish</li>
+                    <li>Navigate đến Graph Builder của từng version</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Example Graph -->
+        <section class="step">
+            <h2><span class="step-number">📊</span><span class="step-title">Ví dụ: Graph Hoàn Chỉnh</span></h2>
+            <div class="step-content">
+                <p>Graph cho đánh giá TikTok Creator với nhiều plugins:</p>
+
+                <div class="graph-preview">
+<pre>
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  Input:         │     │  Normalize:     │     │  Normalize:     │
+│  followers      │────▶│  min:0 max:1M   │────▶│                 │
+│                 │     │  out: 0-100     │     │                 │
+└─────────────────┘     └─────────────────┘     └────────┬────────┘
+                                                         │
+┌─────────────────┐     ┌─────────────────┐     ┌────────┴────────┐
+│  Input:         │     │  Normalize:     │     │                 │
+│  likes          │────▶│  min:0 max:500K │────▶│                 │
+└─────────────────┘     └─────────────────┘     │                 │
+                                                  │  Weighted:     │
+┌─────────────────┐     ┌─────────────────┐     │  [0.3, 0.25,    │
+│  Input:         │     │  Normalize:     │     │   0.2, 0.25]    │──┐
+│  shares         │────▶│  min:0 max:50K  │────▶│                 │  │
+└─────────────────┘     └─────────────────┘     └─────────────────┘  │
+                                                                    │
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐ │
+│  Input:         │     │  Normalize:     │     │  Formula:       │ │
+│  engagement_rate│────▶│  min:0 max:20    │────▶│  score * 0.8 +  │◀─┤
+└─────────────────┘     └─────────────────┘     │  bonus          │ │
+                                                  └─────────────────┘ │
+                                                                    │
+                                                  ┌─────────────────┐ │
+                                                  │  Threshold:     │ │
+                                                  │  >= 70?         │ │
+                                                  │  Premium/Std    │◀─┘
+                                                  └────────┬────────┘ │
+                                                           │          │
+                                                  ┌────────▼────────┐
+                                                  │  Output:        │
+                                                  │  finalScore,    │
+                                                  │  tier           │
+                                                  └─────────────────┘
+</pre>
+                </div>
+
+                <h3>Nodes trong Graph</h3>
+                <ul class="action-list">
+                    <li><strong>5 Input nodes:</strong> followers, likes, shares, views, engagement_rate</li>
+                    <li><strong>5 Normalize nodes:</strong> Scale 0-max → 0-100</li>
+                    <li><strong>1 Weighted Average:</strong> Tính điểm chính với trọng số</li>
+                    <li><strong>1 Formula:</strong> Tính bonus từ engagement</li>
+                    <li><strong>1 Threshold:</strong> Phân loại Premium/Standard</li>
+                    <li><strong>1 Output:</strong> Trả về finalScore và tier</li>
+                </ul>
+            </div>
+        </section>
+
+        <footer>
+            <p>Criteria System v3 - Full Workflow Guide</p>
+            <p>Hướng dẫn này cover đầy đủ workflow từ Schema → Evaluation → Graph → Publish → Execute → Trace</p>
+        </footer>
+    </div>
+</body>
+</html>

@@ -6,7 +6,7 @@ import { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { SchemaUseCases } from '../use-cases/schema.use-cases';
 import { OrgContextInterceptor } from '@infrastructure/auth/org-context.interceptor';
-import { CreateSchemaDto, UpdateSchemaDto } from '../dto/schema.dto';
+import { CreateSchemaDto, UpdateSchemaDto, UpdateFieldDto } from '../dto/schema.dto';
 
 @Controller('schemas')
 @UseInterceptors(OrgContextInterceptor)
@@ -67,6 +67,18 @@ export class SchemaController {
   ) {
     return this.dataSource.transaction((em) =>
       this.useCases.createField(req.user!.organizationId as never, id as never, dto, em),
+    );
+  }
+
+  @Patch(':id/fields/:fieldId')
+  async updateField(
+    @Param('id') id: string,
+    @Param('fieldId') fieldId: string,
+    @Body() dto: UpdateFieldDto,
+    @Req() req: Request,
+  ) {
+    return this.dataSource.transaction((em) =>
+      this.useCases.updateField(req.user!.organizationId as never, id as never, fieldId as never, dto, em),
     );
   }
 

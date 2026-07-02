@@ -139,6 +139,40 @@ function SchemaDetail({ schemaId }: { schemaId: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['schemas', schemaId, 'fields'] }),
   });
 
+  // Edit field state
+  const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+
+  const updateFieldMutation = useMutation({
+    mutationFn: ({ fieldId, data }: { fieldId: string; data: { displayName?: string; description?: string } }) =>
+      schemasApi.updateField(schemaId, fieldId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['schemas', schemaId, 'fields'] });
+      setEditingFieldId(null);
+    },
+  });
+
+  const handleStartEdit = (field: any) => {
+    setEditingFieldId(field.id);
+    setEditDisplayName(field.displayName || '');
+    setEditDescription(field.description || '');
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingFieldId) return;
+    updateFieldMutation.mutate({
+      fieldId: editingFieldId,
+      data: { displayName: editDisplayName, description: editDescription || undefined },
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingFieldId(null);
+    setEditDisplayName('');
+    setEditDescription('');
+  };
+
   if (schemaQuery.isLoading) return <div className="p-4 text-gray-500 dark:text-gray-400">Loading...</div>;
   const schema: any = schemaQuery.data;
 
@@ -220,27 +254,83 @@ function SchemaDetail({ schemaId }: { schemaId: string }) {
               <th className="px-4 py-2 font-medium">Key</th>
               <th className="px-4 py-2 font-medium">Display Name</th>
               <th className="px-4 py-2 font-medium">Type</th>
-              <th className="px-4 py-2 w-8"></th>
+              <th className="px-4 py-2 w-24"></th>
             </tr>
           </thead>
           <tbody>
             {(fieldsQuery.data as any[])?.map((f: any) => (
               <tr key={f.id} className="border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
-                <td className="px-4 py-2 text-sm font-mono text-gray-700 dark:text-gray-300">{f.key}</td>
-                <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-200">{f.displayName}</td>
-                <td className="px-4 py-2 text-sm">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
-                    {f.dataType}
-                  </span>
-                </td>
-                <td className="px-4 py-2">
-                  <button
-                    onClick={() => { if (confirm('Delete field?')) deleteFieldMutation.mutate(f.id); }}
-                    className="text-xs text-red-400 dark:text-red-500 hover:text-red-600 dark:hover:text-red-400"
-                  >
-                    ✕
-                  </button>
-                </td>
+                {editingFieldId === f.id ? (
+                  // Edit mode
+                  <>
+                    <td className="px-4 py-2 text-sm font-mono text-gray-700 dark:text-gray-300">{f.key}</td>
+                    <td className="px-4 py-2">
+                      <div className="space-y-1">
+                        <input
+                          value={editDisplayName}
+                          onChange={e => setEditDisplayName(e.target.value)}
+                          placeholder="Display name"
+                          className="text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 w-full"
+                        />
+                        <input
+                          value={editDescription}
+                          onChange={e => setEditDescription(e.target.value)}
+                          placeholder="Description (optional)"
+                          className="text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 w-full"
+                        />
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 text-sm">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                        {f.dataType}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2">
+                      <div className="flex gap-1">
+                        <button
+                          onClick={handleSaveEdit}
+                          disabled={updateFieldMutation.isPending}
+                          className="text-xs bg-green-600 dark:bg-green-700 text-white px-2 py-1 rounded hover:bg-green-700 dark:hover:bg-green-600"
+                        >
+                          {updateFieldMutation.isPending ? '...' : 'Save'}
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          className="text-xs text-gray-500 dark:text-gray-400 px-2 py-1 hover:text-gray-700 dark:hover:text-gray-300"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </td>
+                  </>
+                ) : (
+                  // View mode
+                  <>
+                    <td className="px-4 py-2 text-sm font-mono text-gray-700 dark:text-gray-300">{f.key}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-200">{f.displayName}</td>
+                    <td className="px-4 py-2 text-sm">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                        {f.dataType}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2">
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => handleStartEdit(f)}
+                          className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => { if (confirm('Delete field?')) deleteFieldMutation.mutate(f.id); }}
+                          className="text-xs text-red-400 dark:text-red-500 hover:text-red-600 dark:hover:text-red-400"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </>
+                )}
               </tr>
             ))}
             {!fieldsQuery.data?.length && (

@@ -5,6 +5,7 @@ import { EvaluationVersion } from '../../../infrastructure/database/typeorm/enti
 import { Schema } from '../../../infrastructure/database/typeorm/entities/schema.entity';
 import { Node } from '../../../infrastructure/database/typeorm/entities/node.entity';
 import { Edge } from '../../../infrastructure/database/typeorm/entities/edge.entity';
+import { Execution } from '../../../infrastructure/database/typeorm/entities/execution.entity';
 import { OrganizationId, EvaluationId, EvaluationVersionId } from '../../../shared/types';
 import { CreateEvaluationDto, UpdateEvaluationDto } from '../dto/evaluation.dto';
 
@@ -94,6 +95,25 @@ export class EvaluationUseCases {
     return versions.map(v => this.versionToResponse(v));
   }
 
+  async getVersion(
+    orgId: OrganizationId,
+    evaluationId: EvaluationId,
+    versionId: EvaluationVersionId,
+    em: EntityManager,
+  ): Promise<unknown> {
+    const evaluation = await em.getRepository(Evaluation).findOne({
+      where: { id: evaluationId, organizationId: orgId, ...notDeleted },
+    });
+    if (!evaluation) throw new NotFoundException(`Evaluation ${evaluationId} not found`);
+
+    const version = await em.getRepository(EvaluationVersion).findOne({
+      where: { id: versionId, evaluationId, ...notDeleted },
+    });
+    if (!version) throw new NotFoundException(`Version ${versionId} not found`);
+
+    return this.versionToResponse(version);
+  }
+
   async createVersion(
     orgId: OrganizationId,
     evaluationId: EvaluationId,
@@ -158,6 +178,34 @@ export class EvaluationUseCases {
     return this.versionToResponse(savedVersion);
   }
 
+  async listExecutionsByEvaluation(
+    orgId: OrganizationId,
+    evaluationId: EvaluationId,
+    em: EntityManager,
+  ): Promise<unknown[]> {
+    const evaluation = await em.getRepository(Evaluation).findOne({
+      where: { id: evaluationId, organizationId: orgId, ...notDeleted },
+    });
+    if (!evaluation) throw new NotFoundException(`Evaluation ${evaluationId} not found`);
+
+    const versions = await em.getRepository(EvaluationVersion).find({
+      where: { evaluationId, ...notDeleted },
+      select: ['id'],
+    });
+    const versionIds = versions.map(v => v.id);
+
+    if (versionIds.length === 0) return [];
+
+    const executions = await em.getRepository(Execution)
+      .createQueryBuilder('e')
+      .where('e.evaluationVersionId IN (:...versionIds)', { versionIds })
+      .andWhere('e.organizationId = :orgId', { orgId })
+      .orderBy('e.startedAt', 'DESC')
+      .getMany();
+
+    return executions.map(e => this.executionToResponse(e));
+  }
+
   async publish(
     orgId: OrganizationId,
     evaluationId: EvaluationId,
@@ -218,6 +266,19 @@ export class EvaluationUseCases {
       status: v.status,
       publishedAt: v.publishedAt?.toISOString() ?? null,
       createdAt: v.createdAt.toISOString(),
+    };
+  }
+
+  private executionToResponse(e: Execution) {
+    return {
+      id: e.id,
+      organizationId: e.organizationId,
+      evaluationVersionId: e.evaluationVersionId,
+      status: e.status,
+      inputValues: e.inputValues,
+      finalResult: e.finalResult,
+      startedAt: e.startedAt.toISOString(),
+      finishedAt: e.finishedAt?.toISOString() ?? null,
     };
   }
 }

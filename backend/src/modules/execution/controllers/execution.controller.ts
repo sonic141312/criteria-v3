@@ -13,6 +13,13 @@ export class ExecutionController {
     private readonly dataSource: DataSource,
   ) {}
 
+  @Get()
+  async list(@Req() req: Request) {
+    return this.dataSource.transaction((em) =>
+      this.useCases.list(req.user!.organizationId as never, em),
+    );
+  }
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async run(@Body() dto: RunExecutionDto, @Req() req: Request) {

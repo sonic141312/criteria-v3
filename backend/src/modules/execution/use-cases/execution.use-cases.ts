@@ -19,6 +19,15 @@ import { RunExecutionDto } from '../dto/execution.dto';
 export class ExecutionUseCases {
   constructor(private readonly executor: Executor) {}
 
+  async list(orgId: OrganizationId, em: EntityManager): Promise<unknown[]> {
+    const executions = await em.getRepository(Execution).find({
+      where: { organizationId: orgId },
+      order: { startedAt: 'DESC' },
+      take: 100,
+    });
+    return executions.map(e => this.toResponse(e));
+  }
+
   async run(
     orgId: OrganizationId,
     dto: RunExecutionDto,

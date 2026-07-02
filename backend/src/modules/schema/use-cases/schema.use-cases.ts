@@ -4,7 +4,7 @@ import { EntityManager, Repository, IsNull } from 'typeorm';
 import { Schema } from '../../../infrastructure/database/typeorm/entities/schema.entity';
 import { Field } from '../../../infrastructure/database/typeorm/entities/field.entity';
 import { OrganizationId, SchemaId } from '../../../shared/types';
-import { CreateSchemaDto, UpdateSchemaDto } from '../dto/schema.dto';
+import { CreateSchemaDto, UpdateSchemaDto, UpdateFieldDto } from '../dto/schema.dto';
 
 const notDeleted = { deletedAt: IsNull() };
 
@@ -99,6 +99,33 @@ export class SchemaUseCases {
     if (!schema) throw new NotFoundException(`Schema ${schemaId} not found`);
 
     await em.getRepository(Field).delete({ id: fieldId, schemaId });
+  }
+
+  async updateField(
+    orgId: OrganizationId,
+    schemaId: SchemaId,
+    fieldId: string,
+    dto: UpdateFieldDto,
+    em: EntityManager,
+  ): Promise<unknown> {
+    const schema = await this.schemaRepo.findOne({
+      where: { id: schemaId, organizationId: orgId, ...notDeleted },
+    });
+    if (!schema) throw new NotFoundException(`Schema ${schemaId} not found`);
+
+    const field = await this.fieldRepo.findOne({ where: { id: fieldId, schemaId } });
+    if (!field) throw new NotFoundException(`Field ${fieldId} not found`);
+
+    const updates: Partial<Field> = {};
+    if (dto.displayName !== undefined) updates.displayName = dto.displayName;
+    if (dto.description !== undefined) updates.description = dto.description ?? null;
+    if (dto.validation !== undefined) updates.validation = dto.validation ?? null;
+    if (dto.metadata !== undefined) updates.metadata = dto.metadata ?? null;
+
+    await em.getRepository(Field).update({ id: fieldId }, updates as any);
+
+    const updated = await this.fieldRepo.findOne({ where: { id: fieldId } });
+    return this.fieldToResponse(updated!);
   }
 
   private toResponse(s: Schema) {

@@ -207,12 +207,20 @@ function EvaluationCard({ evaluation, onSchemaName }: { evaluation: any; onSchem
               </div>
             ))}
           </div>
-          <button
-            onClick={() => createVersionMutation.mutate()}
-            className="mt-3 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
-          >
-            + New Draft Version
-          </button>
+          <div className="flex gap-3 mt-3">
+            <button
+              onClick={() => navigate(`/evaluations/${evaluation.id}/versions`)}
+              className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+            >
+              Manage Versions →
+            </button>
+            <button
+              onClick={() => createVersionMutation.mutate()}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+            >
+              + New Draft Version
+            </button>
+          </div>
         </div>
       )}
     </div>

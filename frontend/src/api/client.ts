@@ -44,6 +44,9 @@ export const schemasApi = {
   createField: (schemaId: string, data: {
     key: string; displayName: string; dataType: string; description?: string;
   }) => request<unknown>('POST', `/schemas/${schemaId}/fields`, data),
+  updateField: (schemaId: string, fieldId: string, data: {
+    displayName?: string; description?: string;
+  }) => request<unknown>('PATCH', `/schemas/${schemaId}/fields/${fieldId}`, data),
   deleteField: (schemaId: string, fieldId: string) =>
     request<void>('DELETE', `/schemas/${schemaId}/fields/${fieldId}`),
 };
@@ -57,10 +60,14 @@ export const evaluationsApi = {
     request<unknown>('POST', '/evaluations', data),
   listVersions: (evaluationId: string) =>
     request<unknown[]>('GET', `/evaluations/${evaluationId}/versions`),
+  getVersion: (evaluationId: string, versionId: string) =>
+    request<unknown>('GET', `/evaluations/${evaluationId}/versions/${versionId}`),
   createVersion: (evaluationId: string) =>
     request<unknown>('POST', `/evaluations/${evaluationId}/versions`),
   publish: (evaluationId: string, versionId: string) =>
     request<unknown>('POST', `/evaluations/${evaluationId}/versions/${versionId}/publish`),
+  listExecutions: (evaluationId: string) =>
+    request<unknown[]>('GET', `/evaluations/${evaluationId}/executions`),
 };
 
 // ── Graph ──────────────────────────────────────────────────────────────────
@@ -93,6 +100,7 @@ export const executionsApi = {
     request<unknown>('POST', '/executions', data),
   get: (id: string) => request<unknown>('GET', `/executions/${id}`),
   getTrace: (id: string) => request<unknown>('GET', `/executions/${id}/trace`),
+  list: () => request<unknown[]>('GET', '/executions'),
 };
 
 // ── Plugins ─────────────────────────────────────────────────────────────────

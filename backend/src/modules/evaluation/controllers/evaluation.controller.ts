@@ -57,6 +57,20 @@ export class EvaluationController {
     );
   }
 
+  @Get(':id/versions/:vId')
+  async getVersion(@Param('id') id: string, @Param('vId') vId: string, @Req() req: Request) {
+    return this.dataSource.transaction((em) =>
+      this.useCases.getVersion(req.user!.organizationId as never, id as never, vId as never, em),
+    );
+  }
+
+  @Get(':id/executions')
+  async listExecutions(@Param('id') id: string, @Req() req: Request) {
+    return this.dataSource.transaction((em) =>
+      this.useCases.listExecutionsByEvaluation(req.user!.organizationId as never, id as never, em),
+    );
+  }
+
   @Post(':id/versions')
   @HttpCode(HttpStatus.CREATED)
   async createVersion(@Param('id') id: string, @Req() req: Request) {

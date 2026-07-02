@@ -33,25 +33,97 @@ function ExecutionsList() {
     queryFn: () => evaluationsApi.list(),
   });
 
+  const executionsQuery = useQuery({
+    queryKey: ['executions'],
+    queryFn: () => executionsApi.list(),
+  });
+
   if (evaluationsQuery.isLoading) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>;
   }
 
+  const executions = (executionsQuery.data as any[]) || [];
+
   return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Available Published Versions</h2>
+    <div className="space-y-4">
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Available Published Versions</h2>
+        </div>
+        <div className="p-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Select an evaluation version below to run. You need to publish a graph first in the Graph Builder.
+          </p>
+          <Link
+            to="/evaluations"
+            className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+          >
+            Go to Evaluations to manage versions
+          </Link>
+        </div>
       </div>
-      <div className="p-4">
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-          Select an evaluation version below to run. You need to publish a graph first in the Graph Builder.
-        </p>
-        <Link
-          to="/evaluations"
-          className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
-        >
-          → Go to Evaluations to manage versions
-        </Link>
+
+      {/* Execution History */}
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Recent Executions</h2>
+        </div>
+        {executionsQuery.isLoading ? (
+          <div className="p-4">
+            <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+          </div>
+        ) : executions.length === 0 ? (
+          <div className="p-4">
+            <p className="text-sm text-gray-500 dark:text-gray-400">No executions yet. Run an evaluation to see history here.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100 dark:divide-gray-700">
+            {executions.slice(0, 20).map((exec: any) => (
+              <div key={exec.id} className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className={`w-2 h-2 rounded-full ${
+                      exec.status === 'SUCCESS' ? 'bg-green-500' :
+                      exec.status === 'FAILED' ? 'bg-red-500' :
+                      exec.status === 'PARTIAL' ? 'bg-yellow-500' :
+                      'bg-gray-400'
+                    }`} />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                        Version: {exec.evaluationVersionId?.substring(0, 8)}...
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {exec.startedAt ? new Date(exec.startedAt).toLocaleString() : '-'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      exec.status === 'SUCCESS' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                      exec.status === 'FAILED' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                      'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                    }`}>
+                      {exec.status}
+                    </span>
+                    <Link
+                      to={`/executions/${exec.id}/trace`}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                    >
+                      View Trace
+                    </Link>
+                  </div>
+                </div>
+                {exec.finalResult && (
+                  <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                    Result: <code className="bg-gray-100 dark:bg-gray-900 px-1 rounded">
+                      {typeof exec.finalResult === 'object' ? JSON.stringify(exec.finalResult) : String(exec.finalResult)}
+                    </code>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -219,12 +291,12 @@ function ExecutionResult({ execution }: { execution: any }) {
       )}
 
       <div className="flex gap-3">
-        <a
-          href={`/executions/${execution.id}`}
+        <Link
+          to={`/executions/${execution.id}/trace`}
           className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
         >
           View full trace →
-        </a>
+        </Link>
       </div>
     </div>
   );
