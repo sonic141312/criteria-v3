@@ -172,6 +172,31 @@ export async function createNodeAPI(
   return result.id;
 }
 
+export async function createEdgeAPI(
+  page: Page,
+  versionId: string,
+  data: {
+    fromNodeId: string;
+    fromPort: string;
+    toNodeId: string;
+    toPort: string;
+  }
+): Promise<string> {
+  const response = await page.request.fetch(
+    `${API_URL}/versions/${versionId}/graph/edges`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Org-Id': ORG_ID,
+      },
+      data,
+    }
+  );
+  const result = await response.json();
+  return result.id;
+}
+
 export async function runExecutionAPI(
   page: Page,
   evaluationVersionId: string,
@@ -251,6 +276,10 @@ export async function setupTestEvaluation(
  */
 export async function navigateToEvaluations(page: Page): Promise<void> {
   await page.goto(`${BASE_URL}/evaluations`);
+}
+
+export async function navigateToSchemas(page: Page): Promise<void> {
+  await page.goto(`${BASE_URL}/schemas`);
 }
 
 export async function navigateToVersionManager(

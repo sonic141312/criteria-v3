@@ -42,7 +42,7 @@ export function EvaluationPage() {
   });
 
   const getSchemaName = (schemaId: string) => {
-    const schema = schemasQuery.data?.find((s: any) => s.id === schemaId);
+    const schema = (schemasQuery.data as any[])?.find((s: any) => s.id === schemaId);
     return schema?.name ?? schemaId;
   };
 

@@ -4,6 +4,7 @@ import { SchemaEditorPage } from './pages/SchemaEditorPage';
 import { GraphBuilderPage } from './pages/GraphBuilderPage';
 import { ExecutionRunnerPage } from './pages/ExecutionRunnerPage';
 import { ExecutionTracePage } from './pages/ExecutionTracePage';
+import { CompareExecutionsPage } from './pages/CompareExecutionsPage';
 import { EvaluationPage } from './pages/EvaluationPage';
 import { VersionManagerPage } from './pages/VersionManagerPage';
 import { AppLayout } from './components/AppLayout';
@@ -30,6 +31,7 @@ export function App() {
             <Route path="/executions" element={<ExecutionRunnerPage />} />
             <Route path="/executions/:executionId" element={<ExecutionRunnerPage />} />
             <Route path="/executions/:executionId/trace" element={<ExecutionTracePage />} />
+            <Route path="/executions/compare" element={<CompareExecutionsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

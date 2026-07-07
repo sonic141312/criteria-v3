@@ -3,10 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { executionsApi } from '@/api/client';
 import { clsx } from 'clsx';
+import { ExecutionTraceGraph } from '@/components/ExecutionTraceGraph';
+import { StatusBadge } from './ExecutionRunnerPage';
 
 export function ExecutionTracePage() {
   const { executionId } = useParams<{ executionId: string }>();
   const navigate = useNavigate();
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const traceQuery = useQuery({
     queryKey: ['executions', executionId, 'trace'],
@@ -23,36 +26,19 @@ export function ExecutionTracePage() {
   const trace = traceQuery.data as any;
   const exec = execQuery.data as any;
 
-  const statusColor = (status: string) => {
-    switch (status) {
-      case 'SUCCESS': return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800';
-      case 'PARTIAL': return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800';
-      case 'FAILED': return 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800';
-      default: return 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300';
-    }
-  };
+  const executionsQuery = useQuery({
+    queryKey: ['executions'],
+    queryFn: () => executionsApi.list(),
+  });
 
-  const nodeStatusColor = (status: string) => {
-    switch (status) {
-      case 'SUCCESS': return 'bg-green-500';
-      case 'ERROR': return 'bg-red-500';
-      case 'SKIPPED': return 'bg-gray-400';
-      default: return 'bg-gray-400';
-    }
-  };
+  const previousExecution = ((executionsQuery.data as any[]) || [])
+    .filter((e: any) => e.evaluationVersionId === exec?.evaluationVersionId && e.id !== executionId)
+    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
 
-  const nodeBgColor = (status: string) => {
-    switch (status) {
-      case 'SUCCESS': return 'bg-white dark:bg-gray-800';
-      case 'ERROR': return 'bg-red-50 dark:bg-red-900/20';
-      case 'SKIPPED': return 'bg-gray-50 dark:bg-gray-800/50';
-      default: return 'bg-white dark:bg-gray-800';
-    }
-  };
+  const selectedNode = trace?.nodes?.find((n: any) => n.nodeId === selectedNodeId);
 
   return (
     <div className="max-w-4xl mx-auto p-6">
-      {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button
           onClick={() => navigate('/executions')}
@@ -68,7 +54,6 @@ export function ExecutionTracePage() {
         </div>
       </div>
 
-      {/* Loading/Error states */}
       {traceQuery.isLoading && (
         <div className="flex items-center justify-center py-12">
           <p className="text-sm text-gray-500 dark:text-gray-400">Loading trace...</p>
@@ -83,13 +68,10 @@ export function ExecutionTracePage() {
 
       {trace && (
         <div className="space-y-6">
-          {/* Execution Summary */}
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Execution Summary</h2>
-              <span className={clsx('text-xs px-2 py-1 rounded font-medium border', statusColor(exec?.status))}>
-                {exec?.status}
-              </span>
+              <StatusBadge status={exec?.status || 'UNKNOWN'} />
             </div>
             <div className="p-4">
               <div className="grid grid-cols-3 gap-4">
@@ -117,7 +99,26 @@ export function ExecutionTracePage() {
             </div>
           </div>
 
-          {/* Input Values */}
+          {trace.nodes && trace.nodes.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Graph View</h2>
+              </div>
+              <div className="p-2">
+                <ExecutionTraceGraph
+                  trace={trace}
+                  selectedNodeId={selectedNodeId}
+                  onNodeSelect={(n) => setSelectedNodeId(n?.nodeId ?? null)}
+                />
+                <div className="flex items-center gap-4 mt-2 px-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span>Success</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span>Error</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-400"></span>Skipped</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {exec?.inputValues && Object.keys(exec.inputValues).length > 0 && (
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
@@ -138,7 +139,6 @@ export function ExecutionTracePage() {
             </div>
           )}
 
-          {/* Final Result */}
           {exec?.finalResult && (
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
@@ -152,7 +152,35 @@ export function ExecutionTracePage() {
             </div>
           )}
 
-          {/* Node Results */}
+          {selectedNode && (
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Selected Node Details</h2>
+                <button onClick={() => setSelectedNodeId(null)} className="text-xs text-gray-500 hover:text-gray-700">Close</button>
+              </div>
+              <div className="p-4 space-y-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-gray-700 dark:text-gray-300">{(selectedNode as any).nodeId}</span>
+                  <StatusBadge status={(selectedNode as any).status} />
+                </div>
+                {(selectedNode as any).value !== undefined && (
+                  <div>
+                    <p className="text-gray-500 dark:text-gray-400 mb-1 font-medium">Value</p>
+                    <pre className="bg-gray-50 dark:bg-gray-900 p-2 rounded">
+{typeof (selectedNode as any).value === 'object' ? JSON.stringify((selectedNode as any).value, null, 2) : String((selectedNode as any).value)}
+                    </pre>
+                  </div>
+                )}
+                {(selectedNode as any).error && (
+                  <div className="text-red-600 dark:text-red-400">Error: {(selectedNode as any).error}</div>
+                )}
+                {(selectedNode as any).explanation && (
+                  <div className="italic text-gray-600 dark:text-gray-400">{(selectedNode as any).explanation}</div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Node Execution Results</h2>
@@ -172,7 +200,6 @@ export function ExecutionTracePage() {
               </div>
             </div>
 
-            {/* Stats bar */}
             <div className="px-4 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 flex items-center gap-4 text-xs">
               <span className="text-gray-600 dark:text-gray-400">
                 {trace.nodes?.filter((n: any) => n.status === 'SUCCESS').length || 0} succeeded
@@ -190,25 +217,24 @@ export function ExecutionTracePage() {
 
             <div className="divide-y divide-gray-100 dark:divide-gray-700">
               {(trace.nodes as any[])?.map((nodeResult, index) => (
-                <NodeResultItem key={index} nodeResult={nodeResult} index={index} />
+                <NodeResultItem key={index} nodeResult={nodeResult} index={index} highlighted={nodeResult.nodeId === selectedNodeId} />
               ))}
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <Link
               to="/executions"
               className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
             >
               ← Back to Executions
             </Link>
-            {exec?.evaluationVersionId && (
+            {previousExecution && (
               <Link
-                to={`/evaluations?version=${exec.evaluationVersionId}`}
-                className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                to={`/executions/compare?ids=${previousExecution.id},${executionId}`}
+                className="text-sm border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 px-3 py-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30"
               >
-                View Version →
+                Compare with previous
               </Link>
             )}
           </div>
@@ -218,7 +244,7 @@ export function ExecutionTracePage() {
   );
 }
 
-function NodeResultItem({ nodeResult, index }: { nodeResult: any; index: number }) {
+function NodeResultItem({ nodeResult, index, highlighted }: { nodeResult: any; index: number; highlighted: boolean }) {
   const [expanded, setExpanded] = useState(false);
 
   const statusColors = {
@@ -245,7 +271,7 @@ function NodeResultItem({ nodeResult, index }: { nodeResult: any; index: number 
   const colors = statusColors[nodeResult.status as keyof typeof statusColors] || statusColors.SKIPPED;
 
   return (
-    <div className={clsx('p-4', colors.bg)}>
+    <div className={clsx('p-4', colors.bg, highlighted && 'ring-2 ring-blue-400 ring-offset-1')}>
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full text-left"
@@ -278,7 +304,6 @@ function NodeResultItem({ nodeResult, index }: { nodeResult: any; index: number 
 
       {expanded && (
         <div className="mt-4 pl-5 space-y-3">
-          {/* Value */}
           {nodeResult.value !== undefined && nodeResult.value !== null && (
             <div>
               <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Output Value</p>
@@ -290,7 +315,6 @@ function NodeResultItem({ nodeResult, index }: { nodeResult: any; index: number 
             </div>
           )}
 
-          {/* Explanation */}
           {nodeResult.explanation && (
             <div>
               <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Explanation</p>
@@ -298,7 +322,6 @@ function NodeResultItem({ nodeResult, index }: { nodeResult: any; index: number 
             </div>
           )}
 
-          {/* Inputs Received */}
           {nodeResult.inputsReceived && Object.keys(nodeResult.inputsReceived).length > 0 && (
             <div>
               <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Inputs Received</p>
@@ -315,7 +338,6 @@ function NodeResultItem({ nodeResult, index }: { nodeResult: any; index: number 
             </div>
           )}
 
-          {/* Error */}
           {nodeResult.error && (
             <div>
               <p className="text-xs font-medium text-red-600 dark:text-red-400 mb-1">Error</p>
@@ -325,7 +347,6 @@ function NodeResultItem({ nodeResult, index }: { nodeResult: any; index: number 
             </div>
           )}
 
-          {/* Warnings */}
           {nodeResult.warnings && nodeResult.warnings.length > 0 && (
             <div>
               <p className="text-xs font-medium text-yellow-600 dark:text-yellow-400 mb-1">Warnings</p>

@@ -1,15 +1,24 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { evaluationsApi } from '@/api/client';
 import { clsx } from 'clsx';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useToast } from '@/context/ToastContext';
 
 export function VersionManagerPage() {
   const { evaluationId } = useParams<{ evaluationId: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { toast } = useToast();
 
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<
+    | null
+    | { type: 'publish'; versionId: string }
+    | { type: 'clone-draft' }
+    | { type: 'clone-published' }
+  >(null);
 
   const evaluationQuery = useQuery({
     queryKey: ['evaluations', evaluationId],
@@ -25,12 +34,20 @@ export function VersionManagerPage() {
 
   const publishMutation = useMutation({
     mutationFn: (versionId: string) => evaluationsApi.publish(evaluationId!, versionId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['evaluations', evaluationId, 'versions'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['evaluations', evaluationId, 'versions'] });
+      toast('Version published', 'success');
+    },
+    onError: (e: any) => toast(`Publish failed: ${e.message}`, 'error'),
   });
 
   const createVersionMutation = useMutation({
     mutationFn: () => evaluationsApi.createVersion(evaluationId!),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['evaluations', evaluationId, 'versions'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['evaluations', evaluationId, 'versions'] });
+      toast('New draft version created', 'success');
+    },
+    onError: (e: any) => toast(`Failed: ${e.message}`, 'error'),
   });
 
   const evaluation = evaluationQuery.data as any;
@@ -168,22 +185,14 @@ export function VersionManagerPage() {
                 {selectedVersion.status === 'DRAFT' && (
                   <>
                     <button
-                      onClick={() => {
-                        if (confirm('Validate and publish this version? It will become immutable.')) {
-                          publishMutation.mutate(selectedVersion.id);
-                        }
-                      }}
+                      onClick={() => setConfirmAction({ type: 'publish', versionId: selectedVersion.id })}
                       disabled={publishMutation.isPending}
                       className="text-sm bg-green-600 dark:bg-green-700 text-white px-4 py-2 rounded-md hover:bg-green-700 dark:hover:bg-green-600 disabled:opacity-50"
                     >
                       Publish
                     </button>
                     <button
-                      onClick={() => {
-                        if (confirm('Create a new draft based on this version?')) {
-                          createVersionMutation.mutate();
-                        }
-                      }}
+                      onClick={() => setConfirmAction({ type: 'clone-draft' })}
                       disabled={createVersionMutation.isPending}
                       className="text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
                     >
@@ -194,11 +203,7 @@ export function VersionManagerPage() {
 
                 {selectedVersion.status === 'PUBLISHED' && (
                   <button
-                    onClick={() => {
-                      if (confirm('Create a new draft from this published version?')) {
-                        createVersionMutation.mutate();
-                      }
-                    }}
+                    onClick={() => setConfirmAction({ type: 'clone-published' })}
                     disabled={createVersionMutation.isPending}
                     className="text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
                   >
@@ -242,6 +247,51 @@ export function VersionManagerPage() {
           <p className="text-xs mt-1">Versions are created automatically when you create an evaluation.</p>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmAction?.type === 'publish'}
+        title="Publish Version"
+        message="Validate and publish this version? It will become immutable."
+        confirmLabel="Publish"
+        onConfirm={() => {
+          const action = confirmAction;
+          setConfirmAction(null);
+          if (action && action.type === 'publish') {
+            publishMutation.mutate(action.versionId);
+          }
+        }}
+        onCancel={() => setConfirmAction(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmAction?.type === 'clone-draft'}
+        title="Create New Version"
+        message="Create a new draft based on this version?"
+        confirmLabel="Create"
+        onConfirm={() => {
+          const action = confirmAction;
+          setConfirmAction(null);
+          if (action && action.type === 'clone-draft') {
+            createVersionMutation.mutate();
+          }
+        }}
+        onCancel={() => setConfirmAction(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmAction?.type === 'clone-published'}
+        title="Create New Draft"
+        message="Create a new draft from this published version?"
+        confirmLabel="Create"
+        onConfirm={() => {
+          const action = confirmAction;
+          setConfirmAction(null);
+          if (action && action.type === 'clone-published') {
+            createVersionMutation.mutate();
+          }
+        }}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   );
 }

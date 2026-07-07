@@ -1,72 +1,43 @@
 import { test, expect } from '@playwright/test';
+import {
+  setupTestEvaluation,
+  navigateToGraphBuilder,
+  createNodeAPI,
+  createEdgeAPI,
+  createEvaluationAPI,
+  deleteEvaluationAPI,
+  deleteSchemaAPI,
+} from './fixtures';
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.E2E_API_URL || 'http://localhost:3000';
 const ORG_ID = '00000000-0000-0000-0000-000000000001';
-
-async function createFullEvaluation(request: any) {
-  const schemaRes = await request.post(`${BASE_URL}/schemas`, {
-    headers: { 'X-Org-Id': ORG_ID, 'Content-Type': 'application/json' },
-    data: { name: `Graph Test Schema ${Date.now()}` }
-  });
-  const schema = await schemaRes.json();
-
-  await request.post(`${BASE_URL}/schemas/${schema.id}/fields`, {
-    headers: { 'X-Org-Id': ORG_ID, 'Content-Type': 'application/json' },
-    data: { key: 'score', displayName: 'Score', dataType: 'number' }
-  });
-
-  const evalRes = await request.post(`${BASE_URL}/evaluations`, {
-    headers: { 'X-Org-Id': ORG_ID, 'Content-Type': 'application/json' },
-    data: { schemaId: schema.id, name: `Graph Test Eval ${Date.now()}` }
-  });
-  const evaluation = await evalRes.json();
-
-  const versionsRes = await request.get(`${BASE_URL}/evaluations/${evaluation.id}/versions`, {
-    headers: { 'X-Org-Id': ORG_ID }
-  });
-  const versions = await versionsRes.json();
-
-  return { schema, evaluation, version: versions[0] };
-}
-
-async function cleanup(request: any, schemaId: string, evalId: string) {
-  try {
-    await request.delete(`${BASE_URL}/evaluations/${evalId}`, { headers: { 'X-Org-Id': ORG_ID } });
-    await request.delete(`${BASE_URL}/schemas/${schemaId}`, { headers: { 'X-Org-Id': ORG_ID } });
-  } catch {}
-}
-
-async function createNode(request: any, versionId: string, data: any) {
-  const res = await request.post(`${BASE_URL}/versions/${versionId}/graph/nodes`, {
-    headers: { 'X-Org-Id': ORG_ID, 'Content-Type': 'application/json' },
-    data
-  });
-  return res.json();
-}
-
-async function createEdge(request: any, versionId: string, data: any) {
-  const res = await request.post(`${BASE_URL}/versions/${versionId}/graph/edges`, {
-    headers: { 'X-Org-Id': ORG_ID, 'Content-Type': 'application/json' },
-    data
-  });
-  return res.json();
-}
+const FRONTEND_URL = process.env.E2E_BASE_URL || 'http://localhost:5173';
 
 test.describe('GraphBuilderPage - Basic Functionality', () => {
   let testData: any;
 
   test.beforeEach(async ({ page }) => {
-    testData = await createFullEvaluation(page.request);
+    testData = await setupTestEvaluation(page, `Graph Test ${Date.now()}`);
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (testData?.evaluationId) {
+      await deleteEvaluationAPI(page, testData.evaluationId);
+    }
+    if (testData?.schemaId) {
+      await deleteSchemaAPI(page, testData.schemaId);
+    }
   });
 
   test.afterEach(async ({ page }) => {
     if (testData) {
-      await cleanup(page.request, testData.schema.id, testData.evaluation.id);
+      if (testData?.evaluationId) await deleteEvaluationAPI(page, testData.evaluationId);
+        if (testData?.schemaId) await deleteSchemaAPI(page, testData.schemaId);
     }
   });
 
   test('should display graph builder page', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const header = page.locator('h1').filter({ hasText: /Graph Builder/i });
@@ -74,7 +45,7 @@ test.describe('GraphBuilderPage - Basic Functionality', () => {
   });
 
   test('should show version status badge', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const statusBadge = page.getByText(/DRAFT|PUBLISHED/i).first();
@@ -82,7 +53,7 @@ test.describe('GraphBuilderPage - Basic Functionality', () => {
   });
 
   test('should show version number', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const versionText = page.getByText(/v\d+/i).first();
@@ -90,7 +61,7 @@ test.describe('GraphBuilderPage - Basic Functionality', () => {
   });
 
   test('should display node palette for DRAFT version', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const palette = page.getByText('Node Types');
@@ -98,7 +69,7 @@ test.describe('GraphBuilderPage - Basic Functionality', () => {
   });
 
   test('should show Add Node button for DRAFT version', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const addNodeBtn = page.getByRole('button', { name: /Add Node/i });
@@ -106,7 +77,7 @@ test.describe('GraphBuilderPage - Basic Functionality', () => {
   });
 
   test('should show node type buttons in palette', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const inputNode = page.getByText('Input').first();
@@ -114,7 +85,7 @@ test.describe('GraphBuilderPage - Basic Functionality', () => {
   });
 
   test('should show React Flow canvas', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const reactFlowCanvas = page.locator('.react-flow').first();
@@ -122,7 +93,7 @@ test.describe('GraphBuilderPage - Basic Functionality', () => {
   });
 
   test('should show version switcher', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const versionsLabel = page.getByText('Versions:');
@@ -130,7 +101,7 @@ test.describe('GraphBuilderPage - Basic Functionality', () => {
   });
 
   test('should show nodes/edges count', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const count = page.getByText(/\d+ nodes · \d+ edges/);
@@ -138,7 +109,7 @@ test.describe('GraphBuilderPage - Basic Functionality', () => {
   });
 
   test('should show Validate button', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const validateBtn = page.getByRole('button', { name: /Validate/i });
@@ -146,7 +117,7 @@ test.describe('GraphBuilderPage - Basic Functionality', () => {
   });
 
   test('should show Publish button for DRAFT', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const publishBtn = page.getByRole('button', { name: /Publish/i });
@@ -154,7 +125,7 @@ test.describe('GraphBuilderPage - Basic Functionality', () => {
   });
 
   test('should show New Version button for DRAFT', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const newVersionBtn = page.getByRole('button', { name: /New Version/i });
@@ -166,17 +137,16 @@ test.describe('GraphBuilderPage - Node Operations', () => {
   let testData: any;
 
   test.beforeEach(async ({ page }) => {
-    testData = await createFullEvaluation(page.request);
+    testData = await setupTestEvaluation(page, `Graph Node Ops ${Date.now()}`);
   });
 
   test.afterEach(async ({ page }) => {
-    if (testData) {
-      await cleanup(page.request, testData.schema.id, testData.evaluation.id);
-    }
+    if (testData?.evaluationId) await deleteEvaluationAPI(page, testData.evaluationId);
+    if (testData?.schemaId) await deleteSchemaAPI(page, testData.schemaId);
   });
 
   test('should open Add Node modal', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     await page.getByRole('button', { name: /Add Node/i }).click();
@@ -187,10 +157,10 @@ test.describe('GraphBuilderPage - Node Operations', () => {
   });
 
   test('should add Input node', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
-    await createNode(page.request, testData.version.id, {
+    await createNodeAPI(page.request, testData.versionId, {
       nodeType: 'input',
       label: 'Score Input',
       config: { fieldKey: 'score' },
@@ -206,10 +176,10 @@ test.describe('GraphBuilderPage - Node Operations', () => {
   });
 
   test('should add Output node', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
-    await createNode(page.request, testData.version.id, {
+    await createNodeAPI(page.request, testData.versionId, {
       nodeType: 'output',
       label: 'Result',
       config: { outputKey: 'result' },
@@ -225,17 +195,17 @@ test.describe('GraphBuilderPage - Node Operations', () => {
   });
 
   test('should add multiple nodes', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     // Add nodes via API
-    await createNode(page.request, testData.version.id, {
+    await createNodeAPI(page.request, testData.versionId, {
       nodeType: 'input', label: 'Input1', config: { fieldKey: 'score' }, positionX: 100, positionY: 100
     });
-    await createNode(page.request, testData.version.id, {
+    await createNodeAPI(page.request, testData.versionId, {
       nodeType: 'normalize', label: 'Normalize1', config: {}, positionX: 250, positionY: 100
     });
-    await createNode(page.request, testData.version.id, {
+    await createNodeAPI(page.request, testData.versionId, {
       nodeType: 'output', label: 'Output1', config: { outputKey: 'result' }, positionX: 400, positionY: 100
     });
 
@@ -247,11 +217,11 @@ test.describe('GraphBuilderPage - Node Operations', () => {
   });
 
   test('should interact with node', async ({ page }) => {
-    await createNode(page.request, testData.version.id, {
+    await createNodeAPI(page.request, testData.versionId, {
       nodeType: 'input', label: 'Select Test', config: { fieldKey: 'score' }, positionX: 200, positionY: 200
     });
 
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     // Node should be visible
@@ -260,14 +230,14 @@ test.describe('GraphBuilderPage - Node Operations', () => {
   });
 
   test('should update nodes count after adding node', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     // Initially 0 nodes
     const initialCount = page.getByText(/(\d+) nodes/);
     
     // Add a node via API
-    await createNode(page.request, testData.version.id, {
+    await createNodeAPI(page.request, testData.versionId, {
       nodeType: 'input', label: 'New Node', config: { fieldKey: 'score' }, positionX: 100, positionY: 100
     });
 
@@ -286,31 +256,32 @@ test.describe('GraphBuilderPage - Edge Operations', () => {
   let outputNode: any;
 
   test.beforeEach(async ({ page }) => {
-    testData = await createFullEvaluation(page.request);
+    testData = await setupTestEvaluation(page, `Graph Test ${Date.now()}`);
 
-    inputNode = await createNode(page.request, testData.version.id, {
+    inputNode = await createNodeAPI(page.request, testData.versionId, {
       nodeType: 'input', label: 'Input Edge', config: { fieldKey: 'score' }, positionX: 100, positionY: 100
     });
-    outputNode = await createNode(page.request, testData.version.id, {
+    outputNode = await createNodeAPI(page.request, testData.versionId, {
       nodeType: 'output', label: 'Output Edge', config: { outputKey: 'result' }, positionX: 300, positionY: 100
     });
   });
 
   test.afterEach(async ({ page }) => {
     if (testData) {
-      await cleanup(page.request, testData.schema.id, testData.evaluation.id);
+      if (testData?.evaluationId) await deleteEvaluationAPI(page, testData.evaluationId);
+        if (testData?.schemaId) await deleteSchemaAPI(page, testData.schemaId);
     }
   });
 
   test('should display edges between nodes', async ({ page }) => {
-    await createEdge(page.request, testData.version.id, {
+    await createEdgeAPI(page.request, testData.versionId, {
       fromNodeId: inputNode.id,
       fromPort: 'result',
       toNodeId: outputNode.id,
       toPort: 'value'
     });
 
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     // Edge count should be 1
@@ -319,7 +290,7 @@ test.describe('GraphBuilderPage - Edge Operations', () => {
   });
 
   test('should update edge count after creating edge', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     // Initially 0 edges
@@ -327,7 +298,7 @@ test.describe('GraphBuilderPage - Edge Operations', () => {
     await expect(initialCount).toBeVisible({ timeout: 5000 });
 
     // Create edge via API
-    await createEdge(page.request, testData.version.id, {
+    await createEdgeAPI(page.request, testData.versionId, {
       fromNodeId: inputNode.id,
       fromPort: 'result',
       toNodeId: outputNode.id,
@@ -347,21 +318,22 @@ test.describe('GraphBuilderPage - Validation', () => {
   let testData: any;
 
   test.beforeEach(async ({ page }) => {
-    testData = await createFullEvaluation(page.request);
+    testData = await setupTestEvaluation(page, `Graph Test ${Date.now()}`);
   });
 
   test.afterEach(async ({ page }) => {
     if (testData) {
-      await cleanup(page.request, testData.schema.id, testData.evaluation.id);
+      if (testData?.evaluationId) await deleteEvaluationAPI(page, testData.evaluationId);
+        if (testData?.schemaId) await deleteSchemaAPI(page, testData.schemaId);
     }
   });
 
   test('should show validation result for graph', async ({ page }) => {
-    await createNode(page.request, testData.version.id, {
+    await createNodeAPI(page.request, testData.versionId, {
       nodeType: 'output', label: 'Result', config: { outputKey: 'result' }, positionX: 100, positionY: 100
     });
 
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     await page.getByRole('button', { name: /Validate/i }).click();
@@ -372,7 +344,7 @@ test.describe('GraphBuilderPage - Validation', () => {
   });
 
   test('should show validation errors for invalid graph', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     await page.getByRole('button', { name: /Validate/i }).click();
@@ -387,17 +359,18 @@ test.describe('GraphBuilderPage - Version Management', () => {
   let testData: any;
 
   test.beforeEach(async ({ page }) => {
-    testData = await createFullEvaluation(page.request);
+    testData = await setupTestEvaluation(page, `Graph Test ${Date.now()}`);
   });
 
   test.afterEach(async ({ page }) => {
     if (testData) {
-      await cleanup(page.request, testData.schema.id, testData.evaluation.id);
+      if (testData?.evaluationId) await deleteEvaluationAPI(page, testData.evaluationId);
+        if (testData?.schemaId) await deleteSchemaAPI(page, testData.schemaId);
     }
   });
 
   test('should create new version', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     page.on('dialog', dialog => dialog.accept());
@@ -410,11 +383,11 @@ test.describe('GraphBuilderPage - Version Management', () => {
   });
 
   test('should switch between versions', async ({ page }) => {
-    await page.request.post(`${BASE_URL}/evaluations/${testData.evaluation.id}/versions`, {
+    await page.request.post(`${BASE_URL}/evaluations/${testData.evaluationId}/versions`, {
       headers: { 'X-Org-Id': ORG_ID }
     });
 
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const v1 = page.getByRole('button', { name: /v1/i }).first();
@@ -422,7 +395,7 @@ test.describe('GraphBuilderPage - Version Management', () => {
   });
 
   test('should show version controls based on status', async ({ page }) => {
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const addNodeBtn = page.getByRole('button', { name: /Add Node/i });
@@ -434,18 +407,19 @@ test.describe('GraphBuilderPage - Responsive Design', () => {
   let testData: any;
 
   test.beforeEach(async ({ page }) => {
-    testData = await createFullEvaluation(page.request);
+    testData = await setupTestEvaluation(page, `Graph Test ${Date.now()}`);
   });
 
   test.afterEach(async ({ page }) => {
     if (testData) {
-      await cleanup(page.request, testData.schema.id, testData.evaluation.id);
+      if (testData?.evaluationId) await deleteEvaluationAPI(page, testData.evaluationId);
+        if (testData?.schemaId) await deleteSchemaAPI(page, testData.schemaId);
     }
   });
 
   test('should render on desktop', async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const header = page.getByText('Graph Builder').first();
@@ -454,7 +428,7 @@ test.describe('GraphBuilderPage - Responsive Design', () => {
 
   test('should render on tablet', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const header = page.getByText('Graph Builder').first();
@@ -463,7 +437,7 @@ test.describe('GraphBuilderPage - Responsive Design', () => {
 
   test('should render on mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto(`/evaluations/${testData.evaluation.id}/versions/${testData.version.id}/graph`);
+    await page.goto(`/evaluations/${testData.evaluationId}/versions/${testData.versionId}/graph`);
     await page.waitForLoadState('networkidle');
 
     const header = page.getByText('Graph Builder').first();

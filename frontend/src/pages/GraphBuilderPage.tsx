@@ -1,14 +1,18 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ReactFlow, {
-  Node, Edge, Controls, Background, useNodesState, useEdgesState,
-  addEdge, Connection, MarkerType, BackgroundVariant,
+  Node, Edge, Controls, Background, MiniMap, useNodesState, useEdgesState,
+  addEdge, Connection, MarkerType, BackgroundVariant, ReactFlowProvider,
 } from 'reactflow';
 import { clsx } from 'clsx';
 import 'reactflow/dist/style.css';
 import { useParams, useNavigate } from 'react-router-dom';
+import dagre from '@dagrejs/dagre';
 import { graphApi, evaluationsApi, pluginsApi, schemasApi } from '@/api/client';
 import { useTheme } from '@/context/ThemeContext';
+import { useToast } from '@/context/ToastContext';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { EmptyState } from '@/components/EmptyState';
 
 const NODE_PALETTE = [
   { type: 'input', label: 'Input', description: 'Read field value', icon: '📥', color: 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700', nodeColor: { bg: '#eff6ff', border: '#3b82f6', text: '#1e40af' }, darkNodeColor: { bg: '#1e3a5f', border: '#3b82f6', text: '#93c5fd' }, requiresConfig: true },
@@ -27,17 +31,55 @@ const DEFAULT_CONFIGS: Record<string, Record<string, unknown>> = {
   formula: { expression: '' },
 };
 
+const NODE_WIDTH = 180;
+const NODE_HEIGHT = 80;
+
+function computeAutoLayout(nodes: Node[], edges: Edge[]): Map<string, { x: number; y: number }> {
+  if (nodes.length === 0) return new Map();
+  const g = new dagre.graphlib.Graph();
+  g.setDefaultEdgeLabel(() => ({}));
+  g.setGraph({ rankdir: 'LR', nodesep: 60, ranksep: 100 });
+
+  nodes.forEach((n) => g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT }));
+  edges.forEach((e) => g.setEdge(e.source, e.target));
+
+  dagre.layout(g);
+
+  const result = new Map<string, { x: number; y: number }>();
+  nodes.forEach((n) => {
+    const pos = g.node(n.id);
+    if (pos) {
+      result.set(n.id, { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 });
+    }
+  });
+  return result;
+}
+
 export function GraphBuilderPage() {
+  return (
+    <ReactFlowProvider>
+      <GraphBuilderInner />
+    </ReactFlowProvider>
+  );
+}
+
+function GraphBuilderInner() {
   const { evaluationId, versionId } = useParams<{ evaluationId: string; versionId: string }>();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { theme } = useTheme();
+  const { toast } = useToast();
 
   const [showAddNode, setShowAddNode] = useState(false);
   const [pendingNodeType, setPendingNodeType] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [nodeConfig, setNodeConfig] = useState<Record<string, string>>({});
   const [nodeLabel, setNodeLabel] = useState('');
+  const [pendingFieldKey, setPendingFieldKey] = useState('');
+  const [paletteSearch, setPaletteSearch] = useState('');
+  const [confirmDeleteNode, setConfirmDeleteNode] = useState(false);
+  const [confirmPublish, setConfirmPublish] = useState(false);
+  const [confirmDeleteFromPanel, setConfirmDeleteFromPanel] = useState(false);
 
   const evaluationQuery = useQuery({
     queryKey: ['evaluations', evaluationId],
@@ -45,10 +87,12 @@ export function GraphBuilderPage() {
     enabled: !!evaluationId,
   });
 
+  const evaluationData = evaluationQuery.data as { schemaId?: string } | undefined;
+
   const schemaFieldsQuery = useQuery({
-    queryKey: ['schemas', evaluationQuery.data?.schemaId, 'fields'],
-    queryFn: () => schemasApi.listFields(evaluationQuery.data?.schemaId as string),
-    enabled: !!evaluationQuery.data?.schemaId,
+    queryKey: ['schemas', evaluationData?.schemaId, 'fields'],
+    queryFn: () => schemasApi.listFields(evaluationData?.schemaId as string),
+    enabled: !!evaluationData?.schemaId,
   });
 
   const pluginsQuery = useQuery({
@@ -70,37 +114,33 @@ export function GraphBuilderPage() {
 
   const publishMutation = useMutation({
     mutationFn: () => evaluationsApi.publish(evaluationId!, versionId!),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['evaluations', evaluationId, 'versions'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['evaluations', evaluationId, 'versions'] });
+      toast('Version published successfully', 'success');
+    },
+    onError: (error: any) => {
+      toast(`Failed to publish: ${error.message}`, 'error');
+    },
   });
 
   const validateMutation = useMutation({
     mutationFn: () => graphApi.validate(versionId!),
+    onSuccess: (data: any) => {
+      if (data?.valid) {
+        toast('Graph is valid — ready to publish', 'success');
+      } else {
+        toast(`${(data?.errors || []).length} error(s) found`, 'error');
+      }
+    },
   });
 
   const createVersionMutation = useMutation({
     mutationFn: () => evaluationsApi.createVersion(evaluationId!),
-    onSuccess: (data: any) => navigate(`/evaluations/${evaluationId}/${data.id}/graph`),
+    onSuccess: (data: any) => navigate(`/evaluations/${evaluationId}/versions/${data.id}/graph`),
   });
 
-  const apiNodes: Node[] = ((graphQuery.data?.nodes as any[]) ?? []).map((n: any) => ({
-    id: n.id,
-    type: 'default',
-    position: { x: n.positionX ?? 100, y: n.positionY ?? 100 },
-    data: { label: n.label, nodeType: n.nodeType, config: n.config ?? {} },
-  }));
-
-  const apiEdges: Edge[] = ((graphQuery.data?.edges as any[]) ?? []).map((e: any) => ({
-    id: e.id,
-    source: e.fromNodeId,
-    target: e.toNodeId,
-    sourceHandle: e.fromPort,
-    targetHandle: e.toPort,
-    markerEnd: { type: MarkerType.ArrowClosed },
-    style: { strokeWidth: 2 },
-  }));
-
-  const [nodes, setNodes, onNodesChange] = useNodesState(apiNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(apiEdges);
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
   useEffect(() => {
     if (graphQuery.data) {
@@ -144,9 +184,11 @@ export function GraphBuilderPage() {
       qc.invalidateQueries({ queryKey: ['graph', versionId] });
       setShowAddNode(false);
       setPendingNodeType(null);
+      setPendingFieldKey('');
+      toast('Node added', 'success');
     },
     onError: (error: any) => {
-      alert(`Error: ${error.message}`);
+      toast(`Failed to add node: ${error.message}`, 'error');
     },
   });
 
@@ -155,21 +197,28 @@ export function GraphBuilderPage() {
       graphApi.updateNode(versionId!, selectedNodeId!, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['graph', versionId] });
+      toast('Node updated', 'success');
+    },
+    onError: (error: any) => {
+      toast(`Failed to update: ${error.message}`, 'error');
     },
   });
 
   const deleteNodeMutation = useMutation({
     mutationFn: (nodeId: string) => graphApi.deleteNode(versionId!, nodeId),
     onMutate: (nodeId) => {
-      setNodes((nds) => nds.filter(n => n.id !== nodeId));
-      setEdges((eds) => eds.filter(e => e.source !== nodeId && e.target !== nodeId));
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['graph', versionId] });
       setSelectedNodeId(null);
+      setConfirmDeleteNode(false);
+      setConfirmDeleteFromPanel(false);
+      toast('Node deleted', 'success');
     },
     onError: (error: any) => {
-      alert(`Error deleting node: ${error.message}`);
+      toast(`Failed to delete node: ${error.message}`, 'error');
     },
   });
 
@@ -178,18 +227,7 @@ export function GraphBuilderPage() {
       graphApi.createEdge(versionId!, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['graph', versionId] }),
     onError: (error: any) => {
-      alert(`Error creating edge: ${error.message}`);
-    },
-  });
-
-  const deleteEdgeMutation = useMutation({
-    mutationFn: (edgeId: string) => graphApi.deleteEdge(versionId!, edgeId),
-    onMutate: (edgeId) => {
-      setEdges((eds) => eds.filter(e => e.id !== edgeId));
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['graph', versionId] }),
-    onError: (error: any) => {
-      alert(`Error deleting edge: ${error.message}`);
+      toast(`Failed to create edge: ${error.message}`, 'error');
     },
   });
 
@@ -207,46 +245,96 @@ export function GraphBuilderPage() {
     });
   };
 
-  const handleAddNode = (nodeType: string) => {
+  const handleAddNode = (nodeType: string, positionX?: number, positionY?: number) => {
     const paletteItem = getNodePaletteItem(nodeType);
-    if (paletteItem?.requiresConfig) {
+    if (paletteItem?.requiresConfig && positionX === undefined) {
       setPendingNodeType(nodeType);
       setShowAddNode(true);
-    } else {
-      addNodeMutation.mutate({
-        nodeType,
-        label: paletteItem?.label ?? nodeType,
-        config: {},
-        positionX: 200 + Math.random() * 200,
-        positionY: 200 + Math.random() * 200,
-      });
+      setPendingFieldKey('');
+      return;
     }
+    addNodeMutation.mutate({
+      nodeType,
+      label: paletteItem?.label ?? nodeType,
+      config: {},
+      positionX: positionX ?? 200 + Math.random() * 200,
+      positionY: positionY ?? 200 + Math.random() * 200,
+    });
   };
 
-  const handleConfirmAddNode = () => {
+  const handleConfirmAddNode = (positionX?: number, positionY?: number) => {
     if (!pendingNodeType) return;
     const paletteItem = getNodePaletteItem(pendingNodeType);
-    let config: Record<string, unknown> = { ...DEFAULT_CONFIGS[pendingNodeType] };
+    let config: Record<string, unknown> = { ...(DEFAULT_CONFIGS[pendingNodeType] || {}) };
 
     if (pendingNodeType === 'input') {
-      const fieldKey = (document.getElementById('fieldKey') as HTMLSelectElement)?.value;
-      if (!fieldKey) {
-        alert('Please select a field');
+      if (!pendingFieldKey) {
+        toast('Please select a field', 'error');
         return;
       }
-      config = { fieldKey };
+      config = { fieldKey: pendingFieldKey };
     }
 
     addNodeMutation.mutate({
       nodeType: pendingNodeType,
       label: paletteItem?.label ?? pendingNodeType,
       config,
-      positionX: 200 + Math.random() * 200,
-      positionY: 200 + Math.random() * 200,
+      positionX: positionX ?? 200 + Math.random() * 200,
+      positionY: positionY ?? 200 + Math.random() * 200,
     });
   };
 
-  const selectedNode = nodes.find(n => n.id === selectedNodeId);
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const nodeType = e.dataTransfer.getData('application/reactflow');
+    if (!nodeType) return;
+    const positionX = e.clientX - 220;
+    const positionY = e.clientY - 60;
+    const paletteItem = getNodePaletteItem(nodeType);
+    if (paletteItem?.requiresConfig) {
+      setPendingNodeType(nodeType);
+      setShowAddNode(true);
+      setPendingFieldKey('');
+      return;
+    }
+    addNodeMutation.mutate({
+      nodeType,
+      label: paletteItem?.label ?? nodeType,
+      config: {},
+      positionX,
+      positionY,
+    });
+  };
+
+  const handleAutoLayout = () => {
+    const layout = computeAutoLayout(nodes, edges);
+    if (layout.size === 0) {
+      toast('No nodes to layout', 'info');
+      return;
+    }
+    const updates: Array<{ id: string; pos: { x: number; y: number } }> = [];
+    nodes.forEach((n) => {
+      const pos = layout.get(n.id);
+      if (pos) {
+        updates.push({ id: n.id, pos });
+        updateNodeMutation.mutate({ positionX: pos.x, positionY: pos.y });
+      }
+    });
+    setNodes((nds) =>
+      nds.map((n) => {
+        const u = updates.find((x) => x.id === n.id);
+        return u ? { ...n, position: u.pos } : n;
+      }),
+    );
+    toast('Auto layout applied', 'success');
+  };
+
+  const selectedNode = nodes.find((n) => n.id === selectedNodeId);
   const currentVersion: any = (versionsQuery.data as any[])?.find((v: any) => v.id === versionId);
   const isDraft = currentVersion?.status === 'DRAFT';
   const isDark = theme === 'dark';
@@ -258,12 +346,20 @@ export function GraphBuilderPage() {
 
   const fields = (schemaFieldsQuery.data as any[]) ?? [];
 
-  const getNodePaletteItem = (nodeType: string) => NODE_PALETTE.find(n => n.type === nodeType);
+  const getNodePaletteItem = (nodeType: string) => NODE_PALETTE.find((n) => n.type === nodeType);
+
+  const filteredPalette = useMemo(() => {
+    const q = paletteSearch.trim().toLowerCase();
+    if (!q) return NODE_PALETTE;
+    return NODE_PALETTE.filter(
+      (p) => p.type.includes(q) || p.label.toLowerCase().includes(q) || p.description.toLowerCase().includes(q),
+    );
+  }, [paletteSearch]);
 
   const nodeStyle = (node: Node) => {
     const paletteItem = getNodePaletteItem((node.data as any).nodeType);
     const isSelected = node.id === selectedNodeId;
-    
+
     if (paletteItem) {
       const colors = isDark ? paletteItem.darkNodeColor : paletteItem.nodeColor;
       return {
@@ -277,7 +373,7 @@ export function GraphBuilderPage() {
         minWidth: '120px',
       };
     }
-    
+
     return {
       background: isSelected ? (isDark ? '#1e3a5f' : '#dbeafe') : (isDark ? '#1f2937' : '#fff'),
       border: isSelected ? '2px solid #3b82f6' : (isDark ? '1px solid #374151' : '1px solid #e5e7eb'),
@@ -285,6 +381,11 @@ export function GraphBuilderPage() {
       padding: '10px',
       fontSize: '12px',
     };
+  };
+
+  const miniMapNodeColor = (n: Node) => {
+    const paletteItem = getNodePaletteItem((n.data as any).nodeType);
+    return paletteItem ? paletteItem.nodeColor.border : '#9ca3af';
   };
 
   return (
@@ -305,12 +406,24 @@ export function GraphBuilderPage() {
             )}
           </h1>
           {isDraft && (
-            <button
-              onClick={() => setShowAddNode(true)}
-              className="text-xs bg-blue-600 dark:bg-blue-700 text-white px-3 py-1.5 rounded hover:bg-blue-700 dark:hover:bg-blue-600"
-            >
-              + Add Node
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  setPendingNodeType(null);
+                  setShowAddNode(true);
+                }}
+                className="text-xs bg-blue-600 dark:bg-blue-700 text-white px-3 py-1.5 rounded hover:bg-blue-700 dark:hover:bg-blue-600"
+              >
+                + Add Node
+              </button>
+              <button
+                onClick={handleAutoLayout}
+                data-testid="auto-layout-btn"
+                className="text-xs border border-gray-300 dark:border-gray-600 px-3 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+              >
+                Auto Layout
+              </button>
+            </>
           )}
         </div>
 
@@ -319,7 +432,7 @@ export function GraphBuilderPage() {
             onClick={() => validateMutation.mutate()}
             className={clsx(
               'text-xs border px-3 py-1.5 rounded',
-              validateMutation.isPending ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30 text-blue-400 dark:text-blue-300' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+              validateMutation.isPending ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30 text-blue-400 dark:text-blue-300' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700',
             )}
           >
             {validateMutation.isPending ? 'Validating...' : '✓ Validate'}
@@ -333,11 +446,11 @@ export function GraphBuilderPage() {
                 + New Version
               </button>
               <button
-                onClick={() => { if (confirm('Publish this version? It will become immutable.')) publishMutation.mutate(); }}
+                onClick={() => setConfirmPublish(true)}
                 disabled={publishMutation.isPending}
                 className="text-xs bg-green-600 dark:bg-green-700 text-white px-3 py-1.5 rounded hover:bg-green-700 dark:hover:bg-green-600 disabled:opacity-50"
               >
-                {publishMutation.isPending ? 'Publishing...' : '🚀 Publish'}
+                {publishMutation.isPending ? 'Publishing...' : 'Publish'}
               </button>
             </>
           )}
@@ -346,12 +459,12 @@ export function GraphBuilderPage() {
 
       {/* Validation result */}
       {validateMutation.isSuccess && (
-        <div className={`px-4 py-2 text-xs ${validateMutation.data.valid 
-          ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-b border-green-100 dark:border-green-800' 
+        <div className={`px-4 py-2 text-xs ${(validateMutation.data as any).valid
+          ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-b border-green-100 dark:border-green-800'
           : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-b border-red-100 dark:border-red-800'}`}>
-          {validateMutation.data.valid
-            ? '✓ Graph is valid — ready to publish'
-            : `✕ ${validateMutation.data.errors.length} error(s): ${validateMutation.data.errors.map((e: any) => e.message).join(' | ')}`
+          {(validateMutation.data as any).valid
+            ? 'Graph is valid — ready to publish'
+            : `${(validateMutation.data as any).errors.length} error(s): ${(validateMutation.data as any).errors.map((e: any) => e.message).join(' | ')}`
           }
         </div>
       )}
@@ -363,32 +476,49 @@ export function GraphBuilderPage() {
           <div className="w-56 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto">
             <div className="p-3">
               <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Node Types</h3>
-              <div className="space-y-2">
-                {NODE_PALETTE.map((item) => (
-                  <button
-                    key={item.type}
-                    onClick={() => handleAddNode(item.type)}
-                    className={clsx(
-                      'w-full text-left p-2 rounded border transition-colors hover:shadow-sm',
-                      item.color
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">{item.icon}</span>
-                      <div>
-                        <div className="text-xs font-medium text-gray-800 dark:text-gray-200">{item.label}</div>
-                        <div className="text-[10px] text-gray-500 dark:text-gray-400">{item.description}</div>
+              <input
+                type="text"
+                value={paletteSearch}
+                onChange={(e) => setPaletteSearch(e.target.value)}
+                placeholder="Search nodes..."
+                className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 mb-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              />
+              {filteredPalette.length === 0 ? (
+                <p className="text-xs text-gray-500 dark:text-gray-400 py-2">No match for "{paletteSearch}"</p>
+              ) : (
+                <div className="space-y-2">
+                  {filteredPalette.map((item) => (
+                    <button
+                      key={item.type}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('application/reactflow', item.type);
+                        e.dataTransfer.effectAllowed = 'move';
+                      }}
+                      onClick={() => handleAddNode(item.type)}
+                      data-testid={`palette-node-${item.type}`}
+                      className={clsx(
+                        'w-full text-left p-2 rounded border transition-colors hover:shadow-sm cursor-grab active:cursor-grabbing',
+                        item.color,
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{item.icon}</span>
+                        <div>
+                          <div className="text-xs font-medium text-gray-800 dark:text-gray-200">{item.label}</div>
+                          <div className="text-[10px] text-gray-500 dark:text-gray-400">{item.description}</div>
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {/* React Flow canvas */}
-        <div className="flex-1 relative">
+        <div className="flex-1 relative" onDragOver={handleDragOver} onDrop={handleDrop}>
           {graphQuery.isLoading && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
               <p className="text-sm text-gray-500 dark:text-gray-400">Loading graph...</p>
@@ -399,20 +529,40 @@ export function GraphBuilderPage() {
               <p className="text-sm text-red-600 dark:text-red-400">Failed to load graph</p>
             </div>
           )}
-          {graphQuery.isSuccess && (
+          {graphQuery.isSuccess && nodes.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <EmptyState
+                icon="🔗"
+                title="No nodes yet"
+                description="Drag a node type from the palette or click + Add Node to get started."
+                action={
+                  <button
+                    onClick={() => {
+                      setPendingNodeType(null);
+                      setShowAddNode(true);
+                    }}
+                    className="text-xs bg-blue-600 dark:bg-blue-700 text-white px-3 py-1.5 rounded hover:bg-blue-700 dark:hover:bg-blue-600"
+                  >
+                    + Add Node
+                  </button>
+                }
+              />
+            </div>
+          )}
+          {graphQuery.isSuccess && nodes.length > 0 && (
             <ReactFlow
-              nodes={nodes.map(n => ({
+              nodes={nodes.map((n) => ({
                 ...n,
                 selected: n.id === selectedNodeId,
                 style: nodeStyle(n),
               }))}
-              edges={edges.map(e => ({
+              edges={edges.map((e) => ({
                 ...e,
-                style: { 
-                  stroke: isDark ? '#4b5563' : '#9ca3af', 
-                  strokeWidth: 2 
+                style: {
+                  stroke: isDark ? '#4b5563' : '#9ca3af',
+                  strokeWidth: 2,
                 },
-                markerEnd: { 
+                markerEnd: {
                   type: MarkerType.ArrowClosed,
                   color: isDark ? '#4b5563' : '#9ca3af',
                 },
@@ -420,8 +570,13 @@ export function GraphBuilderPage() {
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onEdgesDelete={(deletedEdges) => {
-                deletedEdges.forEach(edge => {
-                  if (edge.id) deleteEdgeMutation.mutate(edge.id);
+                deletedEdges.forEach((edge) => {
+                  if (edge.id) createEdgeMutation.mutate({
+                    fromNodeId: edge.source,
+                    fromPort: (edge.sourceHandle ?? 'result') as string,
+                    toNodeId: edge.target,
+                    toPort: (edge.targetHandle ?? 'value') as string,
+                  });
                 });
               }}
               onConnect={(params) => {
@@ -437,8 +592,9 @@ export function GraphBuilderPage() {
               }}
               onNodeClick={handleNodeClick}
               onNodeDoubleClick={(_, node) => {
-                if (isDraft && confirm(`Delete node "${node.data.label}"?`)) {
-                  deleteNodeMutation.mutate(node.id);
+                if (isDraft) {
+                  setSelectedNodeId(node.id);
+                  setConfirmDeleteNode(true);
                 }
               }}
               onPaneClick={() => setSelectedNodeId(null)}
@@ -446,6 +602,13 @@ export function GraphBuilderPage() {
               className={isDark ? 'bg-gray-900' : 'bg-gray-50'}
             >
               <Controls />
+              <MiniMap
+                nodeColor={miniMapNodeColor}
+                nodeStrokeWidth={3}
+                zoomable
+                pannable
+                className={isDark ? 'bg-gray-800' : 'bg-white'}
+              />
               <Background variant={BackgroundVariant.Dots} gap={20} size={1} color={isDark ? '#374151' : '#e5e7eb'} />
             </ReactFlow>
           )}
@@ -484,7 +647,8 @@ export function GraphBuilderPage() {
                       <div>
                         <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Field *</label>
                         <select
-                          id="fieldKey"
+                          value={pendingFieldKey}
+                          onChange={(e) => setPendingFieldKey(e.target.value)}
                           className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                         >
                           <option value="">Select a field...</option>
@@ -530,14 +694,18 @@ export function GraphBuilderPage() {
 
                     <div className="flex gap-2 pt-2">
                       <button
-                        onClick={handleConfirmAddNode}
+                        onClick={() => handleConfirmAddNode()}
                         disabled={addNodeMutation.isPending}
                         className="flex-1 text-xs bg-blue-600 dark:bg-blue-700 text-white rounded py-1.5 hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50"
                       >
                         {addNodeMutation.isPending ? 'Adding...' : 'Add Node'}
                       </button>
                       <button
-                        onClick={() => { setShowAddNode(false); setPendingNodeType(null); }}
+                        onClick={() => {
+                          setShowAddNode(false);
+                          setPendingNodeType(null);
+                          setPendingFieldKey('');
+                        }}
                         className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 px-3 py-1.5"
                       >
                         Cancel
@@ -551,7 +719,7 @@ export function GraphBuilderPage() {
                     onClick={() => setPendingNodeType(null)}
                     className="mt-3 w-full text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                   >
-                    ← Back to node types
+                    Back to node types
                   </button>
                 )}
               </div>
@@ -576,7 +744,7 @@ export function GraphBuilderPage() {
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Label</label>
                   <input
                     value={nodeLabel}
-                    onChange={e => setNodeLabel(e.target.value)}
+                    onChange={(e) => setNodeLabel(e.target.value)}
                     className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   />
                 </div>
@@ -597,7 +765,7 @@ export function GraphBuilderPage() {
                         {key === 'fieldKey' ? (
                           <select
                             value={nodeConfig[key] ?? ''}
-                            onChange={e => setNodeConfig(prev => ({ ...prev, [key]: e.target.value }))}
+                            onChange={(e) => setNodeConfig((prev) => ({ ...prev, [key]: e.target.value }))}
                             className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                           >
                             <option value="">Select field...</option>
@@ -609,7 +777,7 @@ export function GraphBuilderPage() {
                           <input
                             type={prop.type === 'number' ? 'number' : 'text'}
                             value={nodeConfig[key] ?? ''}
-                            onChange={e => setNodeConfig(prev => ({ ...prev, [key]: e.target.value }))}
+                            onChange={(e) => setNodeConfig((prev) => ({ ...prev, [key]: e.target.value }))}
                             placeholder={prop.description || key}
                             className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                           />
@@ -628,9 +796,7 @@ export function GraphBuilderPage() {
                     {updateNodeMutation.isPending ? 'Saving...' : 'Save'}
                   </button>
                   <button
-                    onClick={() => {
-                      if (confirm('Delete this node?')) deleteNodeMutation.mutate(selectedNodeId!);
-                    }}
+                    onClick={() => setConfirmDeleteFromPanel(true)}
                     className="text-xs text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 px-3 py-1.5 border border-red-200 dark:border-red-800 rounded"
                   >
                     Delete
@@ -654,7 +820,7 @@ export function GraphBuilderPage() {
                 'text-xs px-2 py-1 rounded transition-colors',
                 v.id === versionId
                   ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600',
               )}
             >
               v{v.versionNumber} — {v.status}
@@ -663,6 +829,41 @@ export function GraphBuilderPage() {
         </div>
         <span className="text-xs text-gray-400 dark:text-gray-500">{nodes.length} nodes · {edges.length} edges</span>
       </div>
+
+      {/* Confirm Publish */}
+      <ConfirmDialog
+        open={confirmPublish}
+        title="Publish Version"
+        message="Publish this version? It will become immutable and replace the current PUBLISHED version."
+        confirmLabel="Publish"
+        onConfirm={() => {
+          setConfirmPublish(false);
+          publishMutation.mutate();
+        }}
+        onCancel={() => setConfirmPublish(false)}
+      />
+
+      {/* Confirm Delete Node (double-click) */}
+      <ConfirmDialog
+        open={confirmDeleteNode}
+        title="Delete Node"
+        message="Delete this node and all its edges? This cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => selectedNodeId && deleteNodeMutation.mutate(selectedNodeId)}
+        onCancel={() => setConfirmDeleteNode(false)}
+      />
+
+      {/* Confirm Delete from panel */}
+      <ConfirmDialog
+        open={confirmDeleteFromPanel}
+        title="Delete Node"
+        message="Delete this node and all its edges? This cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => selectedNodeId && deleteNodeMutation.mutate(selectedNodeId)}
+        onCancel={() => setConfirmDeleteFromPanel(false)}
+      />
     </div>
   );
 }
